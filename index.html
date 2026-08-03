@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Star Link Freight — Fleet Finance</title>
+<link rel="icon" href="data:,">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#0f1720; --panel:#16212c; --panel2:#1c2a37; --border:#28394a;
+  --text:#e8eef4; --muted:#93a5b8; --accent:#3aa0ff; --accent2:#28c98d;
+  --danger:#ff5d6c; --warn:#f5b83d; --radius:12px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+a{color:var(--accent)}
+input,select,textarea,button{font-family:inherit;font-size:15px}
+.hidden{display:none !important}
+
+/* ---------- top bar ---------- */
+header.topbar{
+  position:sticky;top:0;z-index:20;background:linear-gradient(180deg,#101c26,#0f1720 90%);
+  border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+header.topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
+header.topbar h1 span{color:var(--muted);font-weight:500;font-size:12px;display:block;margin-top:2px}
+.lockbtn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;cursor:pointer}
+
+nav.tabs{display:flex;gap:4px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto;position:sticky;top:57px;z-index:19}
+nav.tabs button{background:none;border:none;color:var(--muted);padding:9px 14px;border-radius:9px;cursor:pointer;white-space:nowrap;font-weight:600;font-size:13.5px}
+nav.tabs button.active{background:var(--accent);color:#fff}
+
+main{padding:16px;max-width:1100px;margin:0 auto;padding-bottom:90px}
+
+/* ---------- cards / layout ---------- */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.grid{display:grid;gap:12px}
+.grid.cols-2{grid-template-columns:repeat(2,1fr)}
+.grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.grid.cols-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:760px){.grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.stat .label{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.stat .value{font-size:20px;font-weight:700}
+.stat .value.pos{color:var(--accent2)}
+.stat .value.neg{color:var(--danger)}
+
+h2.section{font-size:15px;margin:0 0 12px;color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:8px}
+h2.section small{color:var(--muted);font-weight:500}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+table th{text-align:left;color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;padding:8px 8px;border-bottom:1px solid var(--border)}
+table td{padding:9px 8px;border-bottom:1px solid var(--border)}
+table tr:last-child td{border-bottom:none}
+table.compact td,table.compact th{padding:6px 8px}
+.tbl-wrap{overflow-x:auto}
+.right{text-align:right}
+.center{text-align:center}
+.muted{color:var(--muted)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.badge.ok{background:rgba(40,201,141,.15);color:var(--accent2)}
+.badge.bad{background:rgba(255,93,108,.15);color:var(--danger)}
+
+button.btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}
+button.btn.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text)}
+button.btn.danger{background:rgba(255,93,108,.15);color:var(--danger);border:1px solid rgba(255,93,108,.3)}
+button.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:7px}
+button.icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:4px 6px}
+button.icon-btn:hover{color:var(--text)}
+.row-actions{display:flex;gap:4px;justify-content:flex-end}
+
+.truck-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.truck-card{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:.15s}
+.truck-card:hover{border-color:var(--accent)}
+.truck-card .name{font-weight:700;margin-bottom:4px}
+.truck-card .meta{color:var(--muted);font-size:12px}
+
+label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;margin-top:10px;font-weight:600}
+input[type=text],input[type=number],input[type=date],input[type=password],select,textarea{
+  width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:8px;outline:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.field-row{grid-template-columns:1fr}}
+
+/* ---------- modal ---------- */
+.overlay{position:fixed;inset:0;background:rgba(6,10,14,.7);display:flex;align-items:flex-end;justify-content:center;z-index:100}
+@media(min-width:700px){.overlay{align-items:center}}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:14px 14px 0 0;padding:20px;width:100%;max-width:480px;max-height:88vh;overflow:auto}
+@media(min-width:700px){.modal{border-radius:14px}}
+.modal h3{margin:0 0 4px;font-size:16px}
+.modal .close-x{float:right;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+/* ---------- setup / lock screens ---------- */
+.center-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.setup-box{max-width:520px;width:100%;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:28px}
+.setup-box h2{margin-top:0}
+.setup-box textarea{min-height:140px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+.steps{color:var(--muted);font-size:13.5px;line-height:1.6}
+.steps ol{padding-left:20px}
+.pin-dots{display:flex;gap:12px;justify-content:center;margin:20px 0}
+.pin-dots div{width:16px;height:16px;border-radius:50%;border:2px solid var(--border)}
+.pin-dots div.filled{background:var(--accent);border-color:var(--accent)}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1c2a37;border:1px solid var(--border);padding:10px 18px;border-radius:10px;z-index:200;font-size:13.5px}
+.toast.err{border-color:var(--danger);color:var(--danger)}
+.toast.ok{border-color:var(--accent2);color:var(--accent2)}
+
+.import-summary{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;margin-top:10px}
+.small-link{font-size:12.5px;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0}
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script>
+/* =========================================================================
+   STAR LINK FREIGHT — FLEET FINANCE APP
+   Single-file web app. Data lives in Firebase Firestore (bring-your-own
+   project, pasted in on first run) so it syncs live between phone & PC.
+   ========================================================================= */
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const LS_CONFIG = "slf_firebase_config";
+const LS_UNLOCK = "slf_unlocked"; // sessionStorage
+
+let app, db;
+let state = {
+  ready:false,
+  settings:{ factoringRate:0.0225, companyGrossDefault:0.10, perInvoiceFee:1.85, shareholders:[], trucks:[], statusOptions:["Delivered","Cancelled (TONU)"], pinHash:null },
+  loads:[],       // {id, truck, number, date(Timestamp|null), pickup, destination, rate, status, month, notes, year}
+  expenses:[],    // {id, month, expense, amount, frequency}
+  draws:[],       // {id, date, shareholder, amount, note}
+  tab:"dashboard",
+  currentTruck:null,
+  dashYear:null,
+  dashMonth:"July",
+};
+
+const root = document.getElementById('root');
+
+/* ---------------------------------------------------------------------
+   BOOT
+   --------------------------------------------------------------------- */
+function boot(){
+  const cfg = localStorage.getItem(LS_CONFIG);
+  if(!cfg){ renderSetupScreen(); return; }
+  try{
+    const parsed = JSON.parse(cfg);
+    initFirebase(parsed);
+  }catch(e){
+    renderSetupScreen("Saved connection looked corrupted. Please paste your Firebase config again.");
+  }
+}
+
+function initFirebase(cfg){
+  try{
+    app = firebase.initializeApp(cfg);
+    db = firebase.firestore();
+  }catch(e){
+    renderSetupScreen("Could not connect: "+e.message);
+    return;
+  }
+  attachListeners();
+  renderAppShell();
+}
+
+function attachListeners(){
+  db.collection('meta').doc('settings').onSnapshot(doc=>{
+    if(doc.exists){
+      const d = doc.data();
+      state.settings = Object.assign({}, state.settings, d);
+    }
+    state.ready = true;
+    if(!state.dashYear) state.dashYear = new Date().getFullYear();
+    checkLockAndRender();
+  }, err=>toast("Firestore error: "+err.message,'err'));
+
+  db.collection('loads').onSnapshot(snap=>{
+    state.loads = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    checkLockAndRender();
+  }, err=>toast("Firestore error (loads): "+err.message,'err'));
+
+  db.collection('expenses').onSnapshot(snap=>{
+    state.expenses = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    checkLockAndRender();
+  }, err=>toast("Firestore error (expenses): "+err.message,'err'));
+
+  db.collection('draws').onSnapshot(snap=>{
+    state.draws = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    checkLockAndRender();
+  }, err=>toast("Firestore error (draws): "+err.message,'err'));
+}
+
+let renderScheduled=false;
+function checkLockAndRender(){
+  if(renderScheduled) return;
+  renderScheduled=true;
+  requestAnimationFrame(()=>{ renderScheduled=false; renderApp(); });
+}
+
+/* ---------------------------------------------------------------------
+   SETUP SCREEN (first run — paste Firebase config)
+   --------------------------------------------------------------------- */
+function renderSetupScreen(errMsg){
+  root.innerHTML = `
+  <div class="center-screen">
+    <div class="setup-box">
+      <h2>Connect your database</h2>
+      <p class="steps">This app stores its data in a free Firebase project you control, so the same data shows up on your phone and PC. Takes about 5 minutes the first time.</p>
+      <div class="steps">
+        <ol>
+          <li>Go to <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a> and create a project (any name, e.g. "Star Link Freight").</li>
+          <li>In the project, open <b>Build → Firestore Database</b> → Create database → start in <b>test mode</b> (you can lock it down later, see the setup guide).</li>
+          <li>Click the gear icon → <b>Project settings</b> → scroll to "Your apps" → click the &lt;/&gt; (Web) icon → register an app (no need for hosting).</li>
+          <li>Copy the <code>firebaseConfig</code> object it shows you and paste it below.</li>
+        </ol>
+      </div>
+      ${errMsg?`<p style="color:var(--danger);font-size:13px">${escapeHtml(errMsg)}</p>`:""}
+      <label>Paste your firebaseConfig here</label>
+      <textarea id="cfgInput" placeholder='{
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+}'></textarea>
+      <div class="modal-actions">
+        <button class="btn" id="connectBtn">Connect</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('connectBtn').onclick=()=>{
+    const raw = document.getElementById('cfgInput').value.trim();
+    if(!raw){ toast("Paste your Firebase config first.","err"); return; }
+    let cfg;
+    try{
+      cfg = parseLenientObject(raw);
+    }catch(e){
+      renderSetupScreen("Couldn't read that config — check it's the object Firebase gave you, e.g. { apiKey: \\"...\\", projectId: \\"...\\", ... }");
+      return;
+    }
+    if(!cfg.apiKey || !cfg.projectId){
+      renderSetupScreen("That doesn't look like a complete config — it needs at least apiKey and projectId.");
+      return;
+    }
+    localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
+    initFirebase(cfg);
+  };
+}
+
+function parseLenientObject(raw){
+  let txt = raw.trim();
+  txt = txt.replace(/^\\s*(const|var|let)\\s+\\w+\\s*=\\s*/,'');
+  txt = txt.replace(/;\\s*$/,'');
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('return (' + txt + ')');
+  return fn();
+}
+
+/* ---------------------------------------------------------------------
+   PIN LOCK
+   --------------------------------------------------------------------- */
+async function sha256(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function isLocked(){
+  return !!state.settings.pinHash && sessionStorage.getItem(LS_UNLOCK) !== '1';
+}
+
+let pinBuffer = "";
+function renderLockScreen(){
+  root.innerHTML = `
+  <div class="center-screen">
+    <div class="setup-box" style="text-align:center">
+      <h2>Enter PIN</h2>
+      <p class="muted" style="font-size:13px">Star Link Freight — Fleet Finance</p>
+      <div class="pin-dots" id="pinDots"></div>
+      <div class="grid cols-3" style="max-width:260px;margin:0 auto">
+        ${[1,2,3,4,5,6,7,8,9].map(n=>`<button class="btn secondary" style="padding:16px 0;font-size:18px" data-pin="${n}">${n}</button>`).join('')}
+        <div></div>
+        <button class="btn secondary" style="padding:16px 0;font-size:18px" data-pin="0">0</button>
+        <button class="btn secondary" style="padding:16px 0" data-pin="back">⌫</button>
+      </div>
+      <p id="pinErr" style="color:var(--danger);font-size:13px;min-height:18px;margin-top:12px"></p>
+    </div>
+  </div>`;
+  renderPinDots();
+  root.querySelectorAll('[data-pin]').forEach(b=>b.onclick=async ()=>{
+    const v = b.getAttribute('data-pin');
+    if(v==='back'){ pinBuffer = pinBuffer.slice(0,-1); }
+    else if(pinBuffer.length<8){ pinBuffer += v; }
+    renderPinDots();
+    if(pinBuffer.length>=4){
+      const hash = await sha256(pinBuffer);
+      if(hash === state.settings.pinHash){
+        sessionStorage.setItem(LS_UNLOCK,'1');
+        pinBuffer="";
+        renderApp();
+      } else if(pinBuffer.length>=8){
+        document.getElementById('pinErr').textContent = "Incorrect PIN";
+        pinBuffer="";
+        renderPinDots();
+      }
+    }
+  });
+}
+function renderPinDots(){
+  const el = document.getElementById('pinDots');
+  if(!el) return;
+  el.innerHTML = Array.from({length:Math.max(4,pinBuffer.length)}).map((_,i)=>`<div class="${i<pinBuffer.length?'filled':''}"></div>`).join('');
+}
+
+/* ---------------------------------------------------------------------
+   APP SHELL + ROUTING
+   --------------------------------------------------------------------- */
+function renderAppShell(){
+  if(!state.ready){
+    root.innerHTML = `<div class="center-screen"><p class="muted">Connecting…</p></div>`;
+    return;
+  }
+  renderApp();
+}
+
+function renderApp(){
+  if(!state.ready) return;
+  if(isLocked()){ renderLockScreen(); return; }
+
+  const tabs = [
+    ["dashboard","Dashboard"],
+    ["trucks","Trucks"],
+    ["expenses","Expenses"],
+    ["draws","Shareholder Draws"],
+    ["settings","Settings"],
+  ];
+  root.innerHTML = `
+    <header class="topbar">
+      <h1>Star Link Freight <span>Fleet Finance</span></h1>
+      ${state.settings.pinHash?'<button class="lockbtn" id="lockNowBtn">🔒 Lock</button>':''}
+    </header>
+    <nav class="tabs">
+      ${tabs.map(([id,label])=>`<button data-tab="${id}" class="${state.tab===id?'active':''}">${label}</button>`).join('')}
+    </nav>
+    <main id="mainArea"></main>
+    <div id="modalRoot"></div>
+    <div id="toastRoot"></div>
+  `;
+  root.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{ state.tab=b.getAttribute('data-tab'); state.currentTruck=null; renderApp(); });
+  const lockBtn = document.getElementById('lockNowBtn');
+  if(lockBtn) lockBtn.onclick=()=>{ sessionStorage.removeItem(LS_UNLOCK); renderApp(); };
+
+  const main = document.getElementById('mainArea');
+  if(state.tab==='dashboard') main.innerHTML = renderDashboard();
+  else if(state.tab==='trucks') main.innerHTML = state.currentTruck ? renderTruckDetail(state.currentTruck) : renderTrucksList();
+  else if(state.tab==='expenses') main.innerHTML = renderExpenses();
+  else if(state.tab==='draws') main.innerHTML = renderDraws();
+  else if(state.tab==='settings') main.innerHTML = renderSettings();
+
+  attachTabHandlers();
+}
+
+function toast(msg, kind){
+  const t = document.createElement('div');
+  t.className = 'toast'+(kind?(' '+kind):'');
+  t.textContent = msg;
+  (document.getElementById('toastRoot')||document.body).appendChild(t);
+  setTimeout(()=>t.remove(), 3200);
+}
+
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function money(n){
+  n = Number(n)||0;
+  const neg = n<0;
+  const s = Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return (neg?'-':'')+'$'+s;
+}
+function pct(n){ return (Number(n)*100).toFixed(1).replace(/\\.0$/,'')+'%'; }
+function fmtDate(v){
+  const d = toJsDate(v);
+  if(!d) return '';
+  return d.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
+}
+function toJsDate(v){
+  if(!v) return null;
+  if(v instanceof Date) return v;
+  if(v.toDate) return v.toDate(); // Firestore Timestamp
+  if(typeof v === 'string'){ const d=new Date(v); return isNaN(d)?null:d; }
+  return null;
+}
+function dateInputVal(v){
+  const d = toJsDate(v);
+  if(!d) return '';
+  const pad = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+/* =========================================================================
+   CALC ENGINE — mirrors the original spreadsheet's formulas exactly.
+   NOTE: revenue/gross/net figures include ALL logged loads regardless of
+   status (Delivered or Cancelled/TONU) — this matches how the source
+   workbook actually computed its totals.
+   ========================================================================= */
+function truckPct(name){
+  const t = (state.settings.trucks||[]).find(t=>t.name===name);
+  return t ? Number(t.pct) : Number(state.settings.companyGrossDefault||0.10);
+}
+function loadsForYear(year){
+  return state.loads.filter(l=>{
+    if(!year) return true;
+    if(l.year!=null) return Number(l.year)===year;
+    const d = toJsDate(l.date);
+    return d ? d.getFullYear()===year : false;
+  });
+}
+function computeMonthStats(monthName, year){
+  const pool = loadsForYear(year).filter(l=>l.month===monthName);
+  const totalLoads = pool.length;
+  const totalGross = pool.reduce((s,l)=>s+(Number(l.rate)||0),0);
+  const companyGross = pool.reduce((s,l)=>s+(Number(l.rate)||0)*truckPct(l.truck),0);
+  const factoringFee = totalGross * Number(state.settings.factoringRate||0);
+  const companyNet = companyGross - factoringFee;
+  const invoicesFee = totalLoads * Number(state.settings.perInvoiceFee||0);
+  const totalExpenses = state.expenses.filter(e=>e.month===monthName && (!year || !e.year || Number(e.year)===year)).reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const netIncome = companyNet - invoicesFee - totalExpenses;
+  return {totalLoads,totalGross,companyGross,factoringFee,companyNet,invoicesFee,totalExpenses,netIncome};
+}
+function computeYearStats(year){
+  const agg = {totalLoads:0,totalGross:0,companyGross:0,factoringFee:0,companyNet:0,invoicesFee:0,totalExpenses:0,netIncome:0};
+  const perMonth = {};
+  for(const m of MONTHS){
+    const st = computeMonthStats(m, year);
+    perMonth[m]=st;
+    for(const k in agg) agg[k]+=st[k];
+  }
+  return {agg, perMonth};
+}
+function truckRevenueForMonth(truckName, monthName, year){
+  const pool = loadsForYear(year).filter(l=>l.month===monthName && l.truck===truckName);
+  return { loads: pool.length, gross: pool.reduce((s,l)=>s+(Number(l.rate)||0),0) };
+}
+function availableYears(){
+  const ys = new Set([new Date().getFullYear()]);
+  state.loads.forEach(l=>{ const d=toJsDate(l.date); if(d) ys.add(d.getFullYear()); else if(l.year) ys.add(Number(l.year)); });
+  return Array.from(ys).sort((a,b)=>a-b);
+}
+
+/* =========================================================================
+   DASHBOARD
+   ========================================================================= */
+function renderDashboard(){
+  const years = availableYears();
+  if(!state.dashYear || !years.includes(state.dashYear)) state.dashYear = years[years.length-1];
+  const year = state.dashYear;
+  const month = state.dashMonth;
+  const m = computeMonthStats(month, year);
+  const {agg, perMonth} = computeYearStats(year);
+  const trucks = state.settings.trucks||[];
+  const shareholders = state.settings.shareholders||[];
+
+  const truckRows = trucks.map(t=>{
+    const r = truckRevenueForMonth(t.name, month, year);
+    return `<tr><td>${escapeHtml(t.name)}</td><td class="right">${r.loads}</td><td class="right">${money(r.gross)}</td><td class="right muted">${pct(t.pct)}</td></tr>`;
+  }).join('') || `<tr><td colspan="4" class="muted center">No trucks yet — add some in Settings.</td></tr>`;
+
+  const yearRows = MONTHS.map(mo=>{
+    const st = perMonth[mo];
+    const active = mo===month;
+    return `<tr style="${active?'background:rgba(58,160,255,.08)':''}"><td>${mo}</td><td class="right">${st.totalLoads}</td><td class="right">${money(st.totalGross)}</td><td class="right ${st.netIncome<0?'neg':''}">${money(st.netIncome)}</td></tr>`;
+  }).join('');
+
+  const distMonthRows = shareholders.map(s=>`<tr><td>${escapeHtml(s.name)}</td><td class="right muted">${pct(s.pct)}</td><td class="right">${money(m.netIncome*s.pct)}</td></tr>`).join('') || `<tr><td colspan="3" class="muted center">Add shareholders in Settings.</td></tr>`;
+  const distYearRows = shareholders.map(s=>`<tr><td>${escapeHtml(s.name)}</td><td class="right muted">${pct(s.pct)}</td><td class="right">${money(agg.netIncome*s.pct)}</td></tr>`).join('');
+
+  return `
+  <div class="card">
+    <div class="field-row">
+      <div><label>Year</label><select id="dashYearSel">${years.map(y=>`<option value="${y}" ${y===year?'selected':''}>${y}</option>`).join('')}</select></div>
+      <div><label>Month</label><select id="dashMonthSel">${MONTHS.map(mo=>`<option value="${mo}" ${mo===month?'selected':''}>${mo}</option>`).join('')}</select></div>
+    </div>
+  </div>
+
+  <h2 class="section">Monthly summary <small>${month} ${year}</small></h2>
+  <div class="grid cols-4">
+    <div class="stat"><div class="label">Total Loads</div><div class="value">${m.totalLoads}</div></div>
+    <div class="stat"><div class="label">Total Gross Revenue</div><div class="value">${money(m.totalGross)}</div></div>
+    <div class="stat"><div class="label">Factoring Fee</div><div class="value">-${money(m.factoringFee)}</div></div>
+    <div class="stat"><div class="label">Company Gross</div><div class="value">${money(m.companyGross)}</div></div>
+    <div class="stat"><div class="label">Company Net</div><div class="value">${money(m.companyNet)}</div></div>
+    <div class="stat"><div class="label">Invoice Fees</div><div class="value">-${money(m.invoicesFee)}</div></div>
+    <div class="stat"><div class="label">Total Expenses</div><div class="value">-${money(m.totalExpenses)}</div></div>
+    <div class="stat"><div class="label">Net Income</div><div class="value ${m.netIncome<0?'neg':'pos'}">${money(m.netIncome)}</div></div>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h2 class="section">Revenue by truck <small>${month}</small></h2>
+      <div class="tbl-wrap"><table><thead><tr><th>Truck</th><th class="right">Loads</th><th class="right">Gross</th><th class="right">Co. %</th></tr></thead><tbody>${truckRows}</tbody></table></div>
+    </div>
+    <div class="card">
+      <h2 class="section">Year at a glance <small>${year}</small></h2>
+      <div class="tbl-wrap"><table><thead><tr><th>Month</th><th class="right">Loads</th><th class="right">Gross</th><th class="right">Net Income</th></tr></thead><tbody>${yearRows}
+      <tr style="font-weight:700"><td>TOTAL</td><td class="right">${agg.totalLoads}</td><td class="right">${money(agg.totalGross)}</td><td class="right ${agg.netIncome<0?'neg':''}">${money(agg.netIncome)}</td></tr>
+      </tbody></table></div>
+    </div>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h2 class="section">Distributions <small>${month} ${year}</small></h2>
+      <div class="tbl-wrap"><table><thead><tr><th>Shareholder</th><th class="right">Share</th><th class="right">Amount</th></tr></thead><tbody>${distMonthRows}</tbody></table></div>
+    </div>
+    <div class="card">
+      <h2 class="section">Distributions <small>${year} total</small></h2>
+      <div class="tbl-wrap"><table><thead><tr><th>Shareholder</th><th class="right">Share</th><th class="right">Amount</th></tr></thead><tbody>${distYearRows}</tbody></table></div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:12px">Note: figures include every logged load regardless of status (Delivered or Cancelled/TONU), matching how the original spreadsheet calculated totals.</p>
+  `;
+}
+
+/* =========================================================================
+   TRUCKS
+   ========================================================================= */
+function renderTrucksList(){
+  const trucks = state.settings.trucks||[];
+  const year = state.dashYear || new Date().getFullYear();
+  const cards = trucks.map(t=>{
+    const yearLoads = state.loads.filter(l=>l.truck===t.name);
+    const totalLoads = yearLoads.length;
+    const totalGross = yearLoads.reduce((s,l)=>s+(Number(l.rate)||0),0);
+    return `<div class="truck-card" data-truck="${escapeHtml(t.name)}">
+      <div class="name">${escapeHtml(t.name)}</div>
+      <div class="meta">${totalLoads} loads logged · ${money(totalGross)}</div>
+      <div class="meta">Co. cut: ${pct(t.pct)}</div>
+    </div>`;
+  }).join('');
+  return `
+  <div class="card">
+    <h2 class="section">Trucks <small>${trucks.length} total — manage list in Settings</small></h2>
+    <div class="truck-grid">${cards || '<p class="muted">No trucks yet. Add trucks in Settings.</p>'}</div>
+  </div>`;
+}
+
+function renderTruckDetail(truckName){
+  const loads = state.loads.filter(l=>l.truck===truckName).sort((a,b)=>{
+    const da=toJsDate(a.date), db_=toJsDate(b.date);
+    if(da && db_) return da-db_;
+    return (a.number||0)-(b.number||0);
+  });
+  const totalLoads = loads.length;
+  const totalGross = loads.reduce((s,l)=>s+(Number(l.rate)||0),0);
+
+  const rows = loads.map(l=>`
+    <tr>
+      <td>${l.number!=null?l.number:''}</td>
+      <td>${fmtDate(l.date)}</td>
+      <td>${escapeHtml(l.pickup)}</td>
+      <td>${escapeHtml(l.destination)}</td>
+      <td class="right">${money(l.rate)}</td>
+      <td>${l.status==='Delivered'?'<span class="badge ok">Delivered</span>':`<span class="badge bad">${escapeHtml(l.status||'')}</span>`}</td>
+      <td>${escapeHtml(l.month)}</td>
+      <td class="row-actions">
+        <button class="icon-btn" data-edit-load="${l.id}">✎</button>
+        <button class="icon-btn" data-del-load="${l.id}">🗑</button>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="8" class="muted center">No loads logged yet.</td></tr>`;
+
+  // per-month rollup for this truck (delivered+cancelled together, matches source)
+  const year = state.dashYear || new Date().getFullYear();
+  const rollup = MONTHS.map(mo=>{
+    const r = truckRevenueForMonth(truckName, mo, year);
+    return `<tr><td>${mo}</td><td class="right">${r.loads}</td><td class="right">${money(r.gross)}</td></tr>`;
+  }).join('');
+
+  return `
+  <button class="btn secondary sm" id="backToTrucks">← All trucks</button>
+  <div class="card" style="margin-top:12px">
+    <h2 class="section">${escapeHtml(truckName)} <small>${totalLoads} loads logged · ${money(totalGross)} total</small></h2>
+    <button class="btn" id="addLoadBtn">+ Add load</button>
+    <div class="tbl-wrap" style="margin-top:14px">
+      <table>
+        <thead><tr><th>#</th><th>Date</th><th>Pickup</th><th>Destination</th><th class="right">Rate</th><th>Status</th><th>Month</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="section">Per-month rollup <small>${year}</small></h2>
+    <div class="tbl-wrap"><table class="compact"><thead><tr><th>Month</th><th class="right">Loads</th><th class="right">Gross</th></tr></thead><tbody>${rollup}</tbody></table></div>
+  </div>`;
+}
+
+function openLoadModal(truckName, loadId){
+  const editing = loadId ? state.loads.find(l=>l.id===loadId) : null;
+  const statusOpts = state.settings.statusOptions||["Delivered","Cancelled (TONU)"];
+  showModal(`
+    <h3>${editing?'Edit load':'Add load'} — ${escapeHtml(truckName)}</h3>
+    <form id="loadForm">
+      <div class="field-row">
+        <div><label>Load #</label><input type="number" name="number" value="${editing?editing.number:(Math.max(0,...state.loads.filter(l=>l.truck===truckName).map(l=>l.number||0))+1)}"></div>
+        <div><label>Date</label><input type="date" name="date" value="${editing?dateInputVal(editing.date):''}"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Pickup</label><input type="text" name="pickup" value="${editing?escapeHtml(editing.pickup):''}" placeholder="e.g. TX"></div>
+        <div><label>Destination</label><input type="text" name="destination" value="${editing?escapeHtml(editing.destination):''}" placeholder="e.g. CA"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Rate ($)</label><input type="number" step="0.01" name="rate" value="${editing?editing.rate:''}"></div>
+        <div><label>Status</label><select name="status">${statusOpts.map(s=>`<option ${editing&&editing.status===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div>
+      </div>
+      <div class="field-row">
+        <div><label>Month</label><select name="month">${MONTHS.map(mo=>`<option ${editing?editing.month===mo:mo===currentMonthName()}${editing&&editing.month===mo?' selected':''}>${mo}</option>`).join('')}</select></div>
+        <div><label>Notes</label><input type="text" name="notes" value="${editing?escapeHtml(editing.notes||''):''}"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('loadForm').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const dateVal = fd.get('date');
+    const parsedDate = dateVal ? new Date(dateVal+'T00:00:00') : null;
+    const payload = {
+      truck: truckName,
+      number: Number(fd.get('number'))||0,
+      date: parsedDate ? firebase.firestore.Timestamp.fromDate(parsedDate) : null,
+      year: parsedDate ? parsedDate.getFullYear() : (state.dashYear || new Date().getFullYear()),
+      pickup: fd.get('pickup')||'',
+      destination: fd.get('destination')||'',
+      rate: Number(fd.get('rate'))||0,
+      status: fd.get('status'),
+      month: fd.get('month'),
+      notes: fd.get('notes')||'',
+    };
+    try{
+      if(editing) await db.collection('loads').doc(editing.id).update(payload);
+      else await db.collection('loads').add(payload);
+      closeModal();
+    }catch(err){ toast("Save failed: "+err.message,'err'); }
+  };
+  document.getElementById('cancelModal').onclick = closeModal;
+}
+function currentMonthName(){ return MONTHS[new Date().getMonth()]; }
+
+/* =========================================================================
+   EXPENSES
+   ========================================================================= */
+function renderExpenses(){
+  const rows = state.expenses.slice().sort((a,b)=>(a.year||0)-(b.year||0) || MONTHS.indexOf(a.month)-MONTHS.indexOf(b.month)).map(e=>`
+    <tr>
+      <td>${escapeHtml(e.month)} ${e.year?`'${String(e.year).slice(2)}`:''}</td>
+      <td>${escapeHtml(e.expense)}</td>
+      <td class="right">${money(e.amount)}</td>
+      <td class="muted">${escapeHtml(e.frequency||'')}</td>
+      <td class="row-actions"><button class="icon-btn" data-edit-exp="${e.id}">✎</button><button class="icon-btn" data-del-exp="${e.id}">🗑</button></td>
+    </tr>`).join('') || `<tr><td colspan="5" class="muted center">No expenses logged yet.</td></tr>`;
+  const total = state.expenses.reduce((s,e)=>s+(Number(e.amount)||0),0);
+  return `
+  <div class="card">
+    <h2 class="section">Expenses <small>${money(total)} total logged</small></h2>
+    <button class="btn" id="addExpBtn">+ Add expense</button>
+    <div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Month</th><th>Expense</th><th class="right">Amount</th><th>Frequency</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+
+function openExpenseModal(expId){
+  const editing = expId ? state.expenses.find(e=>e.id===expId) : null;
+  showModal(`
+    <h3>${editing?'Edit expense':'Add expense'}</h3>
+    <form id="expForm">
+      <div class="field-row">
+        <div><label>Month</label><select name="month">${MONTHS.map(mo=>`<option ${editing&&editing.month===mo?'selected':''}>${mo}</option>`).join('')}</select></div>
+        <div><label>Year</label><input type="number" name="year" value="${editing&&editing.year?editing.year:(state.dashYear||new Date().getFullYear())}"></div>
+      </div>
+      <label>Expense</label>
+      <input type="text" name="expense" value="${editing?escapeHtml(editing.expense):''}" placeholder="e.g. SCAC">
+      <div class="field-row">
+        <div><label>Amount ($)</label><input type="number" step="0.01" name="amount" value="${editing?editing.amount:''}"></div>
+        <div><label>Frequency</label><select name="frequency">
+          <option ${editing&&editing.frequency==='Monthly'?'selected':''}>Monthly</option>
+          <option ${editing&&editing.frequency==='Annual'?'selected':''}>Annual</option>
+          <option ${editing&&editing.frequency==='One time'?'selected':''}>One time</option>
+        </select></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('expForm').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const payload = { month: fd.get('month'), year: Number(fd.get('year'))||new Date().getFullYear(), expense: fd.get('expense')||'', amount: Number(fd.get('amount'))||0, frequency: fd.get('frequency') };
+    try{
+      if(editing) await db.collection('expenses').doc(editing.id).update(payload);
+      else await db.collection('expenses').add(payload);
+      closeModal();
+    }catch(err){ toast("Save failed: "+err.message,'err'); }
+  };
+  document.getElementById('cancelModal').onclick = closeModal;
+}
+
+/* =========================================================================
+   SHAREHOLDER DRAWS
+   ========================================================================= */
+function renderDraws(){
+  const year = state.dashYear || new Date().getFullYear();
+  const {agg} = computeYearStats(year);
+  const shareholders = state.settings.shareholders||[];
+
+  const drawsInYear = state.draws.filter(d=>{
+    if(d.year!=null) return Number(d.year)===year;
+    const dt = toJsDate(d.date);
+    return dt ? dt.getFullYear()===year : true; // undated draws counted against current year by default
+  });
+  const balanceRows = shareholders.map(s=>{
+    const earned = agg.netIncome * s.pct;
+    const taken = drawsInYear.filter(d=>d.shareholder===s.name).reduce((sum,d)=>sum+(Number(d.amount)||0),0);
+    const remaining = earned - taken;
+    return `<tr><td>${escapeHtml(s.name)}</td><td class="right">${money(earned)}</td><td class="right">${money(taken)}</td><td class="right ${remaining<0?'neg':'pos'}">${money(remaining)}</td></tr>`;
+  }).join('');
+  const totalEarned = agg.netIncome;
+  const totalTaken = drawsInYear.reduce((s,d)=>s+(Number(d.amount)||0),0);
+
+  const logRows = state.draws.slice().sort((a,b)=>(toJsDate(b.date)||0)-(toJsDate(a.date)||0)).map(d=>`
+    <tr>
+      <td>${fmtDate(d.date)}</td>
+      <td>${escapeHtml(d.shareholder)}</td>
+      <td class="right">${money(d.amount)}</td>
+      <td class="muted">${escapeHtml(d.note||'')}</td>
+      <td class="row-actions"><button class="icon-btn" data-edit-draw="${d.id}">✎</button><button class="icon-btn" data-del-draw="${d.id}">🗑</button></td>
+    </tr>`).join('') || `<tr><td colspan="5" class="muted center">No draws logged yet.</td></tr>`;
+
+  return `
+  <div class="card">
+    <h2 class="section">Balance summary <small>${year}</small></h2>
+    <div class="tbl-wrap"><table><thead><tr><th>Shareholder</th><th class="right">Earned (YTD)</th><th class="right">Money Taken</th><th class="right">Remaining Balance</th></tr></thead>
+    <tbody>${balanceRows}
+    <tr style="font-weight:700"><td>TOTAL</td><td class="right">${money(totalEarned)}</td><td class="right">${money(totalTaken)}</td><td class="right">${money(totalEarned-totalTaken)}</td></tr>
+    </tbody></table></div>
+    <p class="muted" style="font-size:12px;margin-top:10px">A positive remaining balance is owed to the shareholder. Negative means they've taken more than earned.</p>
+  </div>
+  <div class="card">
+    <h2 class="section">Draw log</h2>
+    <button class="btn" id="addDrawBtn">+ Add draw</button>
+    <div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Date</th><th>Shareholder</th><th class="right">Amount</th><th>Note</th><th></th></tr></thead><tbody>${logRows}</tbody></table></div>
+  </div>`;
+}
+
+function openDrawModal(drawId){
+  const editing = drawId ? state.draws.find(d=>d.id===drawId) : null;
+  const shareholders = state.settings.shareholders||[];
+  showModal(`
+    <h3>${editing?'Edit draw':'Add draw'}</h3>
+    <form id="drawForm">
+      <div class="field-row">
+        <div><label>Date</label><input type="date" name="date" value="${editing?dateInputVal(editing.date):new Date().toISOString().slice(0,10)}"></div>
+        <div><label>Shareholder</label><select name="shareholder">${shareholders.map(s=>`<option ${editing&&editing.shareholder===s.name?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></div>
+      </div>
+      <label>Amount ($)</label>
+      <input type="number" step="0.01" name="amount" value="${editing?editing.amount:''}">
+      <label>Note</label>
+      <input type="text" name="note" value="${editing?escapeHtml(editing.note||''):''}">
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" id="cancelModal">Cancel</button>
+        <button type="submit" class="btn">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('drawForm').onsubmit = async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const dateVal = fd.get('date');
+    const parsedDate = dateVal ? new Date(dateVal+'T00:00:00') : null;
+    const payload = {
+      date: parsedDate ? firebase.firestore.Timestamp.fromDate(parsedDate) : null,
+      year: parsedDate ? parsedDate.getFullYear() : (state.dashYear || new Date().getFullYear()),
+      shareholder: fd.get('shareholder'),
+      amount: Number(fd.get('amount'))||0,
+      note: fd.get('note')||'',
+    };
+    try{
+      if(editing) await db.collection('draws').doc(editing.id).update(payload);
+      else await db.collection('draws').add(payload);
+      closeModal();
+    }catch(err){ toast("Save failed: "+err.message,'err'); }
+  };
+  document.getElementById('cancelModal').onclick = closeModal;
+}
+
+/* =========================================================================
+   SETTINGS
+   ========================================================================= */
+function renderSettings(){
+  const s = state.settings;
+  const shareholderTotal = (s.shareholders||[]).reduce((a,x)=>a+Number(x.pct||0),0);
+  const truckRows = (s.trucks||[]).map((t,i)=>`
+    <tr>
+      <td><input type="text" data-truck-name="${i}" value="${escapeHtml(t.name)}"></td>
+      <td style="width:110px"><input type="number" step="0.01" min="0" max="1" data-truck-pct="${i}" value="${t.pct}"></td>
+      <td class="row-actions"><button class="icon-btn" data-del-truck="${i}">🗑</button></td>
+    </tr>`).join('');
+  const shRows = (s.shareholders||[]).map((sh,i)=>`
+    <tr>
+      <td><input type="text" data-sh-name="${i}" value="${escapeHtml(sh.name)}"></td>
+      <td style="width:110px"><input type="number" step="0.01" min="0" max="1" data-sh-pct="${i}" value="${sh.pct}"></td>
+      <td class="row-actions"><button class="icon-btn" data-del-sh="${i}">🗑</button></td>
+    </tr>`).join('');
+
+  return `
+  <div class="card">
+    <h2 class="section">Rate assumptions</h2>
+    <div class="field-row">
+      <div><label>Factoring Rate</label><input type="number" step="0.0001" id="setFactoring" value="${s.factoringRate}"></div>
+      <div><label>Company Gross % (default)</label><input type="number" step="0.01" id="setGrossDefault" value="${s.companyGrossDefault}"></div>
+    </div>
+    <div class="field-row">
+      <div><label>Per Invoice / Load Fee ($)</label><input type="number" step="0.01" id="setInvoiceFee" value="${s.perInvoiceFee}"></div>
+      <div><label class="muted">Company Net Rate (reference only)</label><input type="text" disabled value="${(Number(s.companyGrossDefault||0)-Number(s.factoringRate||0)).toFixed(4)}"></div>
+    </div>
+    <button class="btn" id="saveRatesBtn" style="margin-top:12px">Save rates</button>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Shareholders <small style="color:${Math.abs(shareholderTotal-1)<0.001?'var(--accent2)':'var(--danger)'}">${pct(shareholderTotal)} total</small></h2>
+    <div class="tbl-wrap"><table class="compact"><thead><tr><th>Name</th><th>Share %</th><th></th></tr></thead><tbody>${shRows}</tbody></table></div>
+    <button class="btn secondary sm" id="addShBtn" style="margin-top:10px">+ Add shareholder</button>
+    <button class="btn sm" id="saveShBtn" style="margin-top:10px;margin-left:6px">Save shareholders</button>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Trucks</h2>
+    <div class="tbl-wrap"><table class="compact"><thead><tr><th>Name</th><th>Co. %</th><th></th></tr></thead><tbody>${truckRows}</tbody></table></div>
+    <button class="btn secondary sm" id="addTruckBtn" style="margin-top:10px">+ Add truck</button>
+    <button class="btn sm" id="saveTrucksBtn" style="margin-top:10px;margin-left:6px">Save trucks</button>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Security</h2>
+    <p class="muted" style="font-size:13px">${s.pinHash?'A PIN is set. Anyone opening this app on this device needs it to view data.':'No PIN set — anyone with the link/app can view data.'}</p>
+    <button class="btn secondary sm" id="setPinBtn">${s.pinHash?'Change PIN':'Set a PIN'}</button>
+    ${s.pinHash?'<button class="btn danger sm" id="removePinBtn" style="margin-left:6px">Remove PIN</button>':''}
+  </div>
+
+  <div class="card">
+    <h2 class="section">Import from Excel</h2>
+    <p class="muted" style="font-size:13px">Import your existing "Star Link Freight" workbook (Settings, truck load logs, Expenses, Shareholder Draws sheets). Safe to re-run — it only adds rows, it won't duplicate existing ones matched by truck+load#.</p>
+    <input type="file" id="importFile" accept=".xlsx,.xls">
+    <div id="importSummary"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Backup</h2>
+    <button class="btn secondary sm" id="exportJsonBtn">Export backup (.json)</button>
+    <button class="btn secondary sm" id="exportXlsxBtn" style="margin-left:6px">Export to Excel (.xlsx)</button>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Connection</h2>
+    <p class="muted" style="font-size:13px">Connected to Firebase project: <b>${escapeHtml(app.options.projectId)}</b></p>
+    <button class="btn danger sm" id="disconnectBtn">Disconnect this device</button>
+  </div>
+  `;
+}
+
+/* ---------------------------------------------------------------------
+   Generic modal helpers
+   --------------------------------------------------------------------- */
+function showModal(innerHtml){
+  const mr = document.getElementById('modalRoot');
+  mr.innerHTML = `<div class="overlay" id="modalOverlay"><div class="modal">${innerHtml}</div></div>`;
+  document.getElementById('modalOverlay').addEventListener('click',(e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+}
+function closeModal(){
+  const mr = document.getElementById('modalRoot');
+  if(mr) mr.innerHTML='';
+}
+
+/* ---------------------------------------------------------------------
+   Event delegation for dynamic content per tab
+   --------------------------------------------------------------------- */
+function attachTabHandlers(){
+  // Dashboard
+  const dy = document.getElementById('dashYearSel');
+  if(dy) dy.onchange = ()=>{ state.dashYear = Number(dy.value); renderApp(); };
+  const dm = document.getElementById('dashMonthSel');
+  if(dm) dm.onchange = ()=>{ state.dashMonth = dm.value; renderApp(); };
+
+  // Trucks list -> detail
+  root.querySelectorAll('[data-truck]').forEach(c=>c.onclick=()=>{ state.currentTruck = c.getAttribute('data-truck'); renderApp(); });
+  const backBtn = document.getElementById('backToTrucks');
+  if(backBtn) backBtn.onclick = ()=>{ state.currentTruck=null; renderApp(); };
+  const addLoadBtn = document.getElementById('addLoadBtn');
+  if(addLoadBtn) addLoadBtn.onclick = ()=>openLoadModal(state.currentTruck, null);
+  root.querySelectorAll('[data-edit-load]').forEach(b=>b.onclick=()=>openLoadModal(state.currentTruck, b.getAttribute('data-edit-load')));
+  root.querySelectorAll('[data-del-load]').forEach(b=>b.onclick=()=>confirmDelete('loads', b.getAttribute('data-del-load'), 'load'));
+
+  // Expenses
+  const addExpBtn = document.getElementById('addExpBtn');
+  if(addExpBtn) addExpBtn.onclick = ()=>openExpenseModal(null);
+  root.querySelectorAll('[data-edit-exp]').forEach(b=>b.onclick=()=>openExpenseModal(b.getAttribute('data-edit-exp')));
+  root.querySelectorAll('[data-del-exp]').forEach(b=>b.onclick=()=>confirmDelete('expenses', b.getAttribute('data-del-exp'), 'expense'));
+
+  // Draws
+  const addDrawBtn = document.getElementById('addDrawBtn');
+  if(addDrawBtn) addDrawBtn.onclick = ()=>openDrawModal(null);
+  root.querySelectorAll('[data-edit-draw]').forEach(b=>b.onclick=()=>openDrawModal(b.getAttribute('data-edit-draw')));
+  root.querySelectorAll('[data-del-draw]').forEach(b=>b.onclick=()=>confirmDelete('draws', b.getAttribute('data-del-draw'), 'draw'));
+
+  // Settings
+  attachSettingsHandlers();
+}
+
+function confirmDelete(collection, id, label){
+  showModal(`
+    <h3>Delete this ${label}?</h3>
+    <p class="muted">This can't be undone.</p>
+    <div class="modal-actions">
+      <button class="btn secondary" id="cancelModal">Cancel</button>
+      <button class="btn danger" id="confirmDelBtn">Delete</button>
+    </div>
+  `);
+  document.getElementById('cancelModal').onclick = closeModal;
+  document.getElementById('confirmDelBtn').onclick = async ()=>{
+    try{ await db.collection(collection).doc(id).delete(); closeModal(); }
+    catch(err){ toast("Delete failed: "+err.message,'err'); }
+  };
+}
+
+function attachSettingsHandlers(){
+  const saveRatesBtn = document.getElementById('saveRatesBtn');
+  if(saveRatesBtn) saveRatesBtn.onclick = async ()=>{
+    const payload = {
+      factoringRate: Number(document.getElementById('setFactoring').value)||0,
+      companyGrossDefault: Number(document.getElementById('setGrossDefault').value)||0,
+      perInvoiceFee: Number(document.getElementById('setInvoiceFee').value)||0,
+    };
+    await saveSettings(payload);
+    toast("Rates saved",'ok');
+  };
+
+  const addShBtn = document.getElementById('addShBtn');
+  if(addShBtn) addShBtn.onclick = ()=>{
+    state.settings.shareholders = (state.settings.shareholders||[]).concat([{name:'New Shareholder', pct:0}]);
+    renderApp();
+  };
+  const saveShBtn = document.getElementById('saveShBtn');
+  if(saveShBtn) saveShBtn.onclick = async ()=>{
+    const names = root.querySelectorAll('[data-sh-name]');
+    const list = Array.from(names).map(inp=>{
+      const i = inp.getAttribute('data-sh-name');
+      const pctInp = root.querySelector(`[data-sh-pct="${i}"]`);
+      return { name: inp.value.trim(), pct: Number(pctInp.value)||0 };
+    }).filter(x=>x.name);
+    await saveSettings({shareholders:list});
+    toast("Shareholders saved",'ok');
+  };
+  root.querySelectorAll('[data-del-sh]').forEach(b=>b.onclick=()=>{
+    const i = Number(b.getAttribute('data-del-sh'));
+    state.settings.shareholders.splice(i,1);
+    renderApp();
+  });
+
+  const addTruckBtn = document.getElementById('addTruckBtn');
+  if(addTruckBtn) addTruckBtn.onclick = ()=>{
+    const n = (state.settings.trucks||[]).length+1;
+    state.settings.trucks = (state.settings.trucks||[]).concat([{name:'Truck '+String(n).padStart(2,'0'), pct: state.settings.companyGrossDefault||0.10}]);
+    renderApp();
+  };
+  const saveTrucksBtn = document.getElementById('saveTrucksBtn');
+  if(saveTrucksBtn) saveTrucksBtn.onclick = async ()=>{
+    const names = root.querySelectorAll('[data-truck-name]');
+    const list = Array.from(names).map(inp=>{
+      const i = inp.getAttribute('data-truck-name');
+      const pctInp = root.querySelector(`[data-truck-pct="${i}"]`);
+      return { name: inp.value.trim(), pct: Number(pctInp.value)||0 };
+    }).filter(x=>x.name);
+    await saveSettings({trucks:list});
+    toast("Trucks saved",'ok');
+  };
+  root.querySelectorAll('[data-del-truck]').forEach(b=>b.onclick=()=>{
+    const i = Number(b.getAttribute('data-del-truck'));
+    state.settings.trucks.splice(i,1);
+    renderApp();
+  });
+
+  const setPinBtn = document.getElementById('setPinBtn');
+  if(setPinBtn) setPinBtn.onclick = openSetPinModal;
+  const removePinBtn = document.getElementById('removePinBtn');
+  if(removePinBtn) removePinBtn.onclick = async ()=>{ await saveSettings({pinHash:null}); toast("PIN removed",'ok'); };
+
+  const importFile = document.getElementById('importFile');
+  if(importFile) importFile.onchange = handleImportFile;
+
+  const exportJsonBtn = document.getElementById('exportJsonBtn');
+  if(exportJsonBtn) exportJsonBtn.onclick = exportJsonBackup;
+  const exportXlsxBtn = document.getElementById('exportXlsxBtn');
+  if(exportXlsxBtn) exportXlsxBtn.onclick = exportXlsxBackup;
+
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  if(disconnectBtn) disconnectBtn.onclick = ()=>{
+    showModal(`
+      <h3>Disconnect this device?</h3>
+      <p class="muted">You'll be asked to paste your Firebase config again next time. Your data stays safe in Firebase either way.</p>
+      <div class="modal-actions">
+        <button class="btn secondary" id="cancelModal">Cancel</button>
+        <button class="btn danger" id="confirmDiscBtn">Disconnect</button>
+      </div>`);
+    document.getElementById('cancelModal').onclick = closeModal;
+    document.getElementById('confirmDiscBtn').onclick = ()=>{ localStorage.removeItem(LS_CONFIG); location.reload(); };
+  };
+}
+
+async function saveSettings(partial){
+  state.settings = Object.assign({}, state.settings, partial);
+  await db.collection('meta').doc('settings').set(state.settings, {merge:true});
+}
+
+function openSetPinModal(){
+  showModal(`
+    <h3>${state.settings.pinHash?'Change PIN':'Set a PIN'}</h3>
+    <label>New PIN (4-8 digits)</label>
+    <input type="password" inputmode="numeric" id="newPin" maxlength="8">
+    <label>Confirm PIN</label>
+    <input type="password" inputmode="numeric" id="newPin2" maxlength="8">
+    <p id="pinModalErr" style="color:var(--danger);font-size:13px;min-height:16px"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn secondary" id="cancelModal">Cancel</button>
+      <button type="button" class="btn" id="savePinBtn">Save PIN</button>
+    </div>
+  `);
+  document.getElementById('cancelModal').onclick = closeModal;
+  document.getElementById('savePinBtn').onclick = async ()=>{
+    const p1 = document.getElementById('newPin').value;
+    const p2 = document.getElementById('newPin2').value;
+    if(p1.length<4){ document.getElementById('pinModalErr').textContent='PIN must be at least 4 digits.'; return; }
+    if(p1!==p2){ document.getElementById('pinModalErr').textContent="PINs don't match."; return; }
+    const hash = await sha256(p1);
+    await saveSettings({pinHash:hash});
+    sessionStorage.setItem(LS_UNLOCK,'1');
+    closeModal();
+    toast("PIN saved",'ok');
+  };
+}
+
+/* =========================================================================
+   IMPORT FROM EXCEL (SheetJS)
+   ========================================================================= */
+function parseDateFlexible(v){
+  if(v==null) return null;
+  if(v instanceof Date) return v;
+  if(typeof v === 'number'){
+    const d = XLSX.SSF.parse_date_code(v);
+    if(!d) return null;
+    return new Date(d.y, d.m-1, d.d);
+  }
+  if(typeof v === 'string'){
+    const parts = v.split(/[\\\\\\/\\-]/).map(s=>s.trim());
+    if(parts.length===3 && parts[2].length===4){
+      return new Date(Number(parts[2]), Number(parts[0])-1, Number(parts[1]));
+    }
+    const d2 = new Date(v);
+    if(!isNaN(d2)) return d2;
+  }
+  return null;
+}
+
+function handleImportFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (evt)=>{
+    try{
+      const data = new Uint8Array(evt.target.result);
+      const wb = XLSX.read(data, {type:'array', cellDates:true});
+      await runImport(wb);
+    }catch(err){
+      toast("Import failed: "+err.message,'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function sheetAoa(wb, name){
+  if(!wb.Sheets[name]) return null;
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, raw:true, defval:null});
+}
+
+async function runImport(wb){
+  const summary = document.getElementById('importSummary');
+  summary.innerHTML = `<div class="import-summary">Importing…</div>`;
+
+  const settingsAoa = sheetAoa(wb, 'Settings');
+  let newSettings = null;
+  if(settingsAoa){
+    const factoringRate = settingsAoa[2] ? settingsAoa[2][1] : undefined;
+    const companyGrossDefault = settingsAoa[3] ? settingsAoa[3][1] : undefined;
+    const perInvoiceFee = settingsAoa[5] ? settingsAoa[5][1] : undefined;
+    const shareholders = [];
+    for(let i=8;i<settingsAoa.length;i++){
+      const row = settingsAoa[i];
+      if(row && typeof row[0]==='string' && typeof row[1]==='number') shareholders.push({name:row[0], pct:row[1]});
+      else break;
+    }
+    const trucks = [];
+    for(let i=2;i<settingsAoa.length;i++){
+      const row = settingsAoa[i];
+      if(row && row[3] && typeof row[4]==='number') trucks.push({name:String(row[3]), pct:row[4]});
+      else if(row && !row[3]) break;
+    }
+    const statusOptions = [];
+    for(let i=2;i<settingsAoa.length;i++){
+      const row = settingsAoa[i];
+      if(row && row[7]) statusOptions.push(row[7]); else if(i>2) break;
+    }
+    newSettings = {};
+    if(factoringRate!=null) newSettings.factoringRate = factoringRate;
+    if(companyGrossDefault!=null) newSettings.companyGrossDefault = companyGrossDefault;
+    if(perInvoiceFee!=null) newSettings.perInvoiceFee = perInvoiceFee;
+    if(shareholders.length) newSettings.shareholders = shareholders;
+    if(trucks.length) newSettings.trucks = trucks;
+    if(statusOptions.length) newSettings.statusOptions = statusOptions;
+  }
+
+  const truckNames = new Set((newSettings && newSettings.trucks ? newSettings.trucks : state.settings.trucks||[]).map(t=>t.name));
+  const skipSheets = new Set(['Settings','Dashboard','Shareholder Draws','Expenses','TEMPLATE','Calc']);
+  const existingKeys = new Set(state.loads.map(l=>l.truck+'::'+l.number));
+  let importedLoads = [];
+  for(const sheetName of wb.SheetNames){
+    if(skipSheets.has(sheetName)) continue;
+    if(!truckNames.has(sheetName)) continue;
+    const rows = sheetAoa(wb, sheetName);
+    if(!rows) continue;
+    for(let i=3;i<rows.length;i++){
+      const r = rows[i];
+      if(r && typeof r[0]==='number'){
+        const key = sheetName+'::'+r[0];
+        if(existingKeys.has(key)) continue;
+        const dt = parseDateFlexible(r[1]);
+        importedLoads.push({
+          truck: sheetName,
+          number: r[0],
+          date: dt ? firebase.firestore.Timestamp.fromDate(dt) : null,
+          year: dt ? dt.getFullYear() : new Date().getFullYear(),
+          pickup: r[2]||'',
+          destination: r[3]||'',
+          rate: Number(r[4])||0,
+          status: r[5]||'Delivered',
+          month: r[6]||'',
+          notes: r[7]||'',
+        });
+      }
+    }
+  }
+
+  const eRows = sheetAoa(wb, 'Expenses');
+  let importedExpenses = [];
+  if(eRows){
+    for(let i=1;i<eRows.length;i++){
+      const r = eRows[i];
+      if(r && r[0]) importedExpenses.push({month:r[0], expense:r[1]||'', amount:Number(r[2])||0, frequency:r[3]||'', year: state.dashYear || new Date().getFullYear()});
+    }
+  }
+
+  const dRows = sheetAoa(wb, 'Shareholder Draws');
+  let importedDraws = [];
+  if(dRows){
+    let headerIdx=-1;
+    for(let i=0;i<dRows.length;i++){ const r=dRows[i]; if(r && r[0]==='Date' && r[1]==='Shareholder'){headerIdx=i;break;} }
+    if(headerIdx>=0){
+      for(let i=headerIdx+1;i<dRows.length;i++){
+        const r = dRows[i];
+        if(!r || !r[1]) break;
+        const dt = parseDateFlexible(r[0]);
+        importedDraws.push({ date: dt?firebase.firestore.Timestamp.fromDate(dt):null, year: dt?dt.getFullYear():(state.dashYear || new Date().getFullYear()), shareholder:r[1], amount:Number(r[2])||0, note:r[3]||'' });
+      }
+    }
+  }
+
+  // Write everything
+  if(newSettings) await saveSettings(newSettings);
+  const batchWrites = [];
+  for(const l of importedLoads) batchWrites.push(db.collection('loads').add(l));
+  for(const ex of importedExpenses) batchWrites.push(db.collection('expenses').add(ex));
+  for(const d of importedDraws) batchWrites.push(db.collection('draws').add(d));
+  await Promise.all(batchWrites);
+
+  summary.innerHTML = `<div class="import-summary">
+    Imported <b>${importedLoads.length}</b> loads, <b>${importedExpenses.length}</b> expenses, <b>${importedDraws.length}</b> shareholder draws.
+    ${newSettings? 'Settings (trucks, shareholders, rates) updated too.':''}
+  </div>`;
+  toast("Import complete",'ok');
+}
+
+/* =========================================================================
+   EXPORT / BACKUP
+   ========================================================================= */
+function exportJsonBackup(){
+  const payload = { settings: state.settings, loads: state.loads, expenses: state.expenses, draws: state.draws, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  downloadBlob(blob, 'starlink-freight-backup-'+new Date().toISOString().slice(0,10)+'.json');
+}
+
+function exportXlsxBackup(){
+  const wbOut = XLSX.utils.book_new();
+
+  // Settings sheet
+  const s = state.settings;
+  const setAoa = [
+    ['SETTINGS'],
+    ['Rate Assumptions','','','Truck List','Co. Gross %'],
+    ['Factoring Rate', s.factoringRate],
+    ['Company Gross % (default)', s.companyGrossDefault],
+    ['Per Invoice / Load Fee', s.perInvoiceFee],
+    [],
+    ['Shareholders'],
+  ];
+  (s.shareholders||[]).forEach(sh=>setAoa.push([sh.name, sh.pct]));
+  const truckStart = 2;
+  (s.trucks||[]).forEach((t,i)=>{
+    const rowIdx = truckStart+i;
+    if(!setAoa[rowIdx]) setAoa[rowIdx] = [];
+    setAoa[rowIdx][3] = t.name; setAoa[rowIdx][4] = t.pct;
+  });
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(setAoa), 'Settings');
+
+  // Per truck sheets
+  (s.trucks||[]).forEach(t=>{
+    const loads = state.loads.filter(l=>l.truck===t.name).sort((a,b)=>(a.number||0)-(b.number||0));
+    const aoa = [[t.name],['Load Log'],['#','Date','Pickup','Destination','Rate','Status','Month','Notes']];
+    loads.forEach(l=>aoa.push([l.number, fmtDate(l.date), l.pickup, l.destination, l.rate, l.status, l.month, l.notes||'']));
+    XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(aoa), t.name.slice(0,31));
+  });
+
+  // Expenses
+  const expAoa = [['Month','Expense','Amount','Frequency']];
+  state.expenses.forEach(e=>expAoa.push([e.month,e.expense,e.amount,e.frequency]));
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(expAoa), 'Expenses');
+
+  // Draws
+  const drAoa = [['Date','Shareholder','Amount','Note']];
+  state.draws.forEach(d=>drAoa.push([fmtDate(d.date), d.shareholder, d.amount, d.note||'']));
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(drAoa), 'Shareholder Draws');
+
+  // Dashboard snapshot (current year)
+  const year = state.dashYear || new Date().getFullYear();
+  const {agg, perMonth} = computeYearStats(year);
+  const dashAoa = [['Month','Loads','Gross Revenue','Net Income']];
+  MONTHS.forEach(mo=>dashAoa.push([mo, perMonth[mo].totalLoads, perMonth[mo].totalGross, perMonth[mo].netIncome]));
+  dashAoa.push(['TOTAL', agg.totalLoads, agg.totalGross, agg.netIncome]);
+  XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(dashAoa), 'Dashboard '+year);
+
+  XLSX.writeFile(wbOut, 'starlink-freight-export-'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ---------------------------------------------------------------------
+   GO
+   --------------------------------------------------------------------- */
+boot();
+</script>
+</body>
+</html>
