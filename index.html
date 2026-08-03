@@ -243,7 +243,7 @@ function renderSetupScreen(errMsg){
     try{
       cfg = parseLenientObject(raw);
     }catch(e){
-      renderSetupScreen("Couldn't read that config — check it's the object Firebase gave you, e.g. { apiKey: \\"...\\", projectId: \\"...\\", ... }");
+      renderSetupScreen("Couldn't read that config — check it's the object Firebase gave you, e.g. { apiKey: \"...\", projectId: \"...\", ... }");
       return;
     }
     if(!cfg.apiKey || !cfg.projectId){
