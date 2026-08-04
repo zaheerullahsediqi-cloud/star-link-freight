@@ -204,6 +204,7 @@ function attachListeners(){
     if(doc.exists){
       const d = doc.data();
       state.settings = Object.assign({}, state.settings, d);
+      migrateTruckIds();
     }
     state.ready = true;
     if(!state.dashYear) state.dashYear = new Date().getFullYear();
@@ -447,9 +448,26 @@ function dateInputVal(v){
    status (Delivered or Cancelled/TONU) — this matches how the source
    workbook actually computed its totals.
    ========================================================================= */
-function truckPct(name){
-  const t = (state.settings.trucks||[]).find(t=>t.name===name);
+function truckPct(truckId){
+  const t = (state.settings.trucks||[]).find(t=>t.id===truckId);
   return t ? Number(t.pct) : Number(state.settings.companyGrossDefault||0.10);
+}
+function truckById(truckId){
+  return (state.settings.trucks||[]).find(t=>t.id===truckId) || null;
+}
+function genId(){
+  return 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+}
+// One-time migration: older trucks were saved without a stable `id` (loads
+// linked to them by mutable `name` instead). Assign id = current name so
+// every existing load keeps working with zero visible change; from this
+// point on, id never changes even if the truck is renamed.
+function migrateTruckIds(){
+  const trucks = state.settings.trucks||[];
+  if(!trucks.length) return;
+  if(!trucks.some(t=>!t.id)) return;
+  const migrated = trucks.map(t=>t.id ? t : Object.assign({}, t, {id: t.name}));
+  saveSettings({trucks: migrated}).catch(err=>toast("Truck ID migration failed: "+err.message,'err'));
 }
 function loadsForYear(year){
   return state.loads.filter(l=>{
@@ -481,8 +499,8 @@ function computeYearStats(year){
   }
   return {agg, perMonth};
 }
-function truckRevenueForMonth(truckName, monthName, year){
-  const pool = loadsForYear(year).filter(l=>l.month===monthName && l.truck===truckName);
+function truckRevenueForMonth(truckId, monthName, year){
+  const pool = loadsForYear(year).filter(l=>l.month===monthName && l.truck===truckId);
   return { loads: pool.length, gross: pool.reduce((s,l)=>s+(Number(l.rate)||0),0) };
 }
 function availableYears(){
@@ -505,7 +523,7 @@ function renderDashboard(){
   const shareholders = state.settings.shareholders||[];
 
   const truckRows = trucks.map(t=>{
-    const r = truckRevenueForMonth(t.name, month, year);
+    const r = truckRevenueForMonth(t.id, month, year);
     return `<tr><td>${escapeHtml(t.name)}</td><td class="right">${r.loads}</td><td class="right">${money(r.gross)}</td><td class="right muted">${pct(t.pct)}</td></tr>`;
   }).join('') || `<tr><td colspan="4" class="muted center">No trucks yet — add some in Settings.</td></tr>`;
 
@@ -572,10 +590,10 @@ function renderTrucksList(){
   const trucks = state.settings.trucks||[];
   const year = state.dashYear || new Date().getFullYear();
   const cards = trucks.map(t=>{
-    const yearLoads = state.loads.filter(l=>l.truck===t.name);
+    const yearLoads = state.loads.filter(l=>l.truck===t.id);
     const totalLoads = yearLoads.length;
     const totalGross = yearLoads.reduce((s,l)=>s+(Number(l.rate)||0),0);
-    return `<div class="truck-card" data-truck="${escapeHtml(t.name)}">
+    return `<div class="truck-card" data-truck="${escapeHtml(t.id)}">
       <div class="name">${escapeHtml(t.name)}</div>
       <div class="meta">${totalLoads} loads logged · ${money(totalGross)}</div>
       <div class="meta">Co. cut: ${pct(t.pct)}</div>
@@ -588,8 +606,10 @@ function renderTrucksList(){
   </div>`;
 }
 
-function renderTruckDetail(truckName){
-  const loads = state.loads.filter(l=>l.truck===truckName).sort((a,b)=>{
+function renderTruckDetail(truckId){
+  const truck = truckById(truckId);
+  const truckName = truck ? truck.name : '(unknown truck)';
+  const loads = state.loads.filter(l=>l.truck===truckId).sort((a,b)=>{
     const da=toJsDate(a.date), db_=toJsDate(b.date);
     if(da && db_) return da-db_;
     return (a.number||0)-(b.number||0);
@@ -633,7 +653,7 @@ function renderTruckDetail(truckName){
   // per-month rollup for this truck (delivered+cancelled together, matches source)
   const year = state.dashYear || new Date().getFullYear();
   const rollup = MONTHS.map(mo=>{
-    const r = truckRevenueForMonth(truckName, mo, year);
+    const r = truckRevenueForMonth(truckId, mo, year);
     return `<tr><td>${mo}</td><td class="right">${r.loads}</td><td class="right">${money(r.gross)}</td></tr>`;
   }).join('');
 
@@ -656,14 +676,16 @@ function renderTruckDetail(truckName){
   </div>`;
 }
 
-function openLoadModal(truckName, loadId){
+function openLoadModal(truckId, loadId){
   const editing = loadId ? state.loads.find(l=>l.id===loadId) : null;
+  const truck = truckById(truckId);
+  const truckName = truck ? truck.name : '(unknown truck)';
   const statusOpts = state.settings.statusOptions||["Delivered","Cancelled (TONU)"];
   showModal(`
     <h3>${editing?'Edit load':'Add load'} — ${escapeHtml(truckName)}</h3>
     <form id="loadForm">
       <div class="field-row">
-        <div><label>Load #</label><input type="number" name="number" value="${editing?editing.number:(Math.max(0,...state.loads.filter(l=>l.truck===truckName).map(l=>l.number||0))+1)}"></div>
+        <div><label>Load #</label><input type="number" name="number" value="${editing?editing.number:(Math.max(0,...state.loads.filter(l=>l.truck===truckId).map(l=>l.number||0))+1)}"></div>
         <div><label>Date</label><input type="date" name="date" value="${editing?dateInputVal(editing.date):''}"></div>
       </div>
       <div class="field-row">
@@ -690,7 +712,7 @@ function openLoadModal(truckName, loadId){
     const dateVal = fd.get('date');
     const parsedDate = dateVal ? new Date(dateVal+'T00:00:00') : null;
     const payload = {
-      truck: truckName,
+      truck: truckId,
       number: Number(fd.get('number'))||0,
       date: parsedDate ? firebase.firestore.Timestamp.fromDate(parsedDate) : null,
       year: parsedDate ? parsedDate.getFullYear() : (state.dashYear || new Date().getFullYear()),
@@ -884,7 +906,7 @@ function renderSettings(){
   const shareholderTotal = (s.shareholders||[]).reduce((a,x)=>a+Number(x.pct||0),0);
   const truckRows = (s.trucks||[]).map((t,i)=>`
     <tr>
-      <td><input type="text" data-truck-name="${i}" value="${escapeHtml(t.name)}"></td>
+      <td><input type="text" data-truck-name="${i}" data-truck-id="${escapeHtml(t.id||t.name)}" value="${escapeHtml(t.name)}"></td>
       <td style="width:110px"><input type="number" step="0.01" min="0" max="1" data-truck-pct="${i}" value="${t.pct}"></td>
       <td class="row-actions"><button class="icon-btn" data-del-truck="${i}">🗑</button></td>
     </tr>`).join('');
@@ -1052,7 +1074,7 @@ function attachSettingsHandlers(){
   const addTruckBtn = document.getElementById('addTruckBtn');
   if(addTruckBtn) addTruckBtn.onclick = ()=>{
     const n = (state.settings.trucks||[]).length+1;
-    state.settings.trucks = (state.settings.trucks||[]).concat([{name:'Truck '+String(n).padStart(2,'0'), pct: state.settings.companyGrossDefault||0.10}]);
+    state.settings.trucks = (state.settings.trucks||[]).concat([{id: genId(), name:'Truck '+String(n).padStart(2,'0'), pct: state.settings.companyGrossDefault||0.10}]);
     renderApp();
   };
   const saveTrucksBtn = document.getElementById('saveTrucksBtn');
@@ -1061,7 +1083,8 @@ function attachSettingsHandlers(){
     const list = Array.from(names).map(inp=>{
       const i = inp.getAttribute('data-truck-name');
       const pctInp = root.querySelector(`[data-truck-pct="${i}"]`);
-      return { name: inp.value.trim(), pct: Number(pctInp.value)||0 };
+      const id = inp.getAttribute('data-truck-id') || inp.value.trim();
+      return { id, name: inp.value.trim(), pct: Number(pctInp.value)||0 };
     }).filter(x=>x.name);
     await saveSettings({trucks:list});
     toast("Trucks saved",'ok');
@@ -1190,10 +1213,15 @@ async function runImport(wb){
       if(row && typeof row[0]==='string' && typeof row[1]==='number') shareholders.push({name:row[0], pct:row[1]});
       else break;
     }
+    const existingTrucksByName = new Map((state.settings.trucks||[]).map(t=>[t.name, t]));
     const trucks = [];
     for(let i=2;i<settingsAoa.length;i++){
       const row = settingsAoa[i];
-      if(row && row[3] && typeof row[4]==='number') trucks.push({name:String(row[3]), pct:row[4]});
+      if(row && row[3] && typeof row[4]==='number'){
+        const tname = String(row[3]);
+        const existingTruck = existingTrucksByName.get(tname);
+        trucks.push({id: existingTruck ? existingTruck.id : tname, name: tname, pct: row[4]});
+      }
       else if(row && !row[3]) break;
     }
     const statusOptions = [];
@@ -1210,23 +1238,25 @@ async function runImport(wb){
     if(statusOptions.length) newSettings.statusOptions = statusOptions;
   }
 
-  const truckNames = new Set((newSettings && newSettings.trucks ? newSettings.trucks : state.settings.trucks||[]).map(t=>t.name));
+  const truckList = (newSettings && newSettings.trucks ? newSettings.trucks : state.settings.trucks||[]);
+  const truckNameToId = new Map(truckList.map(t=>[t.name, t.id]));
   const skipSheets = new Set(['Settings','Dashboard','Shareholder Draws','Expenses','TEMPLATE','Calc']);
   const existingKeys = new Set(state.loads.map(l=>l.truck+'::'+l.number));
   let importedLoads = [];
   for(const sheetName of wb.SheetNames){
     if(skipSheets.has(sheetName)) continue;
-    if(!truckNames.has(sheetName)) continue;
+    if(!truckNameToId.has(sheetName)) continue;
+    const truckId = truckNameToId.get(sheetName);
     const rows = sheetAoa(wb, sheetName);
     if(!rows) continue;
     for(let i=3;i<rows.length;i++){
       const r = rows[i];
       if(r && typeof r[0]==='number'){
-        const key = sheetName+'::'+r[0];
+        const key = truckId+'::'+r[0];
         if(existingKeys.has(key)) continue;
         const dt = parseDateFlexible(r[1]);
         importedLoads.push({
-          truck: sheetName,
+          truck: truckId,
           number: r[0],
           date: dt ? firebase.firestore.Timestamp.fromDate(dt) : null,
           year: dt ? dt.getFullYear() : new Date().getFullYear(),
@@ -1314,7 +1344,7 @@ function exportXlsxBackup(){
 
   // Per truck sheets
   (s.trucks||[]).forEach(t=>{
-    const loads = state.loads.filter(l=>l.truck===t.name).sort((a,b)=>(a.number||0)-(b.number||0));
+    const loads = state.loads.filter(l=>l.truck===t.id).sort((a,b)=>(a.number||0)-(b.number||0));
     const aoa = [[t.name],['Load Log'],['#','Date','Pickup','Destination','Rate','Status','Month','Notes']];
     loads.forEach(l=>aoa.push([l.number, fmtDate(l.date), l.pickup, l.destination, l.rate, l.status, l.month, l.notes||'']));
     XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(aoa), t.name.slice(0,31));
