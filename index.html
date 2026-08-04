@@ -32,8 +32,31 @@ header.topbar h1 span{color:var(--muted);font-weight:500;font-size:12px;display:
 nav.tabs{display:flex;gap:4px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto;position:sticky;top:57px;z-index:19}
 nav.tabs button{background:none;border:none;color:var(--muted);padding:9px 14px;border-radius:9px;cursor:pointer;white-space:nowrap;font-weight:600;font-size:13.5px}
 nav.tabs button.active{background:var(--accent);color:#fff}
+nav.tabs button .tab-icon{display:none}
+nav.tabs button .tab-label{display:none}
+nav.tabs button .tab-label-desktop{display:inline}
 
 main{padding:16px;max-width:1100px;margin:0 auto;padding-bottom:90px}
+
+/* ---------- mobile bottom tab bar (native-app style) ---------- */
+@media(max-width:700px){
+  nav.tabs{
+    position:fixed;left:0;right:0;top:auto;bottom:0;
+    display:flex;gap:0;justify-content:space-around;
+    padding:6px 2px calc(6px + env(safe-area-inset-bottom));
+    background:var(--panel);border-bottom:none;border-top:1px solid var(--border);
+    box-shadow:0 -2px 12px rgba(0,0,0,.25);overflow-x:visible;z-index:30;
+  }
+  nav.tabs button{
+    flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    padding:4px 2px;border-radius:8px;white-space:normal;
+  }
+  nav.tabs button.active{background:none;color:var(--accent)}
+  nav.tabs button .tab-icon{display:block;font-size:18px;line-height:1}
+  nav.tabs button .tab-label{display:block;font-size:9.5px;line-height:1.15;font-weight:600;text-align:center}
+  nav.tabs button .tab-label-desktop{display:none}
+  main{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+}
 
 /* ---------- cards / layout ---------- */
 .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px}
@@ -413,12 +436,12 @@ function renderApp(){
   if(isLocked()){ renderLockScreen(); return; }
 
   const tabs = [
-    ["dashboard","Dashboard"],
-    ["trucks","Trucks"],
-    ["allloads","All Loads"],
-    ["expenses","Expenses"],
-    ["draws","Shareholder Draws"],
-    ["settings","Settings"],
+    ["dashboard","Dashboard","\ud83d\udcca"],
+    ["trucks","Trucks","\ud83d\ude9a"],
+    ["allloads","All Loads","\ud83d\udccb"],
+    ["expenses","Expenses","\ud83e\uddfe"],
+    ["draws","Shareholder Draws","\ud83d\udcb0","Draws"],
+    ["settings","Settings","\u2699\ufe0f"],
   ];
   root.innerHTML = `
     <header class="topbar">
@@ -426,7 +449,7 @@ function renderApp(){
       ${state.settings.pinHash?'<button class="lockbtn" id="lockNowBtn">🔒 Lock</button>':''}
     </header>
     <nav class="tabs">
-      ${tabs.map(([id,label])=>`<button data-tab="${id}" class="${state.tab===id?'active':''}">${label}</button>`).join('')}
+      ${tabs.map(([id,label,icon,mobileLabel])=>`<button data-tab="${id}" class="${state.tab===id?'active':''}"><span class="tab-icon">${icon}</span><span class="tab-label">${mobileLabel||label}</span><span class="tab-label-desktop">${label}</span></button>`).join('')}
     </nav>
     <main id="mainArea"></main>
     <div id="modalRoot"></div>
