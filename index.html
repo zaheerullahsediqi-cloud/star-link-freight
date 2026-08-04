@@ -257,8 +257,11 @@ function renderSetupScreen(errMsg){
 
 function parseLenientObject(raw){
   let txt = raw.trim();
-  txt = txt.replace(/^\\s*(const|var|let)\\s+\\w+\\s*=\\s*/,'');
-  txt = txt.replace(/;\\s*$/,'');
+  // Normalize smart/curly quotes to straight quotes (common when pasting from
+  // phone keyboards, Notes apps, or messaging apps that auto-convert them).
+  txt = txt.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+  txt = txt.replace(/^\s*(const|var|let)\s+\w+\s*=\s*/,'');
+  txt = txt.replace(/;\s*$/,'');
   // eslint-disable-next-line no-new-func
   const fn = new Function('return (' + txt + ')');
   return fn();
@@ -385,7 +388,7 @@ function money(n){
   const s = Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   return (neg?'-':'')+'$'+s;
 }
-function pct(n){ return (Number(n)*100).toFixed(1).replace(/\\.0$/,'')+'%'; }
+function pct(n){ return (Number(n)*100).toFixed(1).replace(/\.0$/,'')+'%'; }
 function fmtDate(v){
   const d = toJsDate(v);
   if(!d) return '';
@@ -1070,7 +1073,7 @@ function parseDateFlexible(v){
     return new Date(d.y, d.m-1, d.d);
   }
   if(typeof v === 'string'){
-    const parts = v.split(/[\\\\\\/\\-]/).map(s=>s.trim());
+    const parts = v.split(/[\/\-]/).map(s=>s.trim());
     if(parts.length===3 && parts[2].length===4){
       return new Date(Number(parts[2]), Number(parts[0])-1, Number(parts[1]));
     }
