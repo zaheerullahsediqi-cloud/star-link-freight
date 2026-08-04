@@ -157,6 +157,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const LS_CONFIG = "slf_firebase_config";
 const LS_UNLOCK = "slf_unlocked"; // sessionStorage
+const LS_PIN_ATTEMPTS = "slf_pin_attempts"; // sessionStorage
+const LS_PIN_LOCK_UNTIL = "slf_pin_lock_until"; // sessionStorage, epoch ms
+const PIN_LOCKOUT_MS = 30000;
+const PIN_MAX_ATTEMPTS = 5;
 
 let app, db;
 let state = {
@@ -169,6 +173,7 @@ let state = {
   currentTruck:null,
   dashYear:null,
   dashMonth:"July",
+  allLoadsFilter:{ truck:'', from:'', to:'', route:'' },
 };
 
 const root = document.getElementById('root');
@@ -311,7 +316,36 @@ function isLocked(){
 }
 
 let pinBuffer = "";
+let pinLockTimer = null;
+function pinLockRemainingMs(){
+  const until = Number(sessionStorage.getItem(LS_PIN_LOCK_UNTIL)||0);
+  return Math.max(0, until - Date.now());
+}
 function renderLockScreen(){
+  if(pinLockTimer){ clearInterval(pinLockTimer); pinLockTimer=null; }
+  const remaining = pinLockRemainingMs();
+  if(remaining>0){
+    root.innerHTML = `
+    <div class="center-screen">
+      <div class="setup-box" style="text-align:center">
+        <h2>Enter PIN</h2>
+        <p class="muted" style="font-size:13px">Star Link Freight — Fleet Finance</p>
+        <p style="color:var(--danger);font-size:14px;margin-top:24px;line-height:1.6">Too many incorrect attempts.<br>Try again in <b id="pinLockSecs">${Math.ceil(remaining/1000)}</b>s.</p>
+      </div>
+    </div>`;
+    pinLockTimer = setInterval(()=>{
+      const r = pinLockRemainingMs();
+      if(r<=0){
+        clearInterval(pinLockTimer); pinLockTimer=null;
+        sessionStorage.removeItem(LS_PIN_LOCK_UNTIL);
+        renderLockScreen();
+      } else {
+        const el = document.getElementById('pinLockSecs');
+        if(el) el.textContent = Math.ceil(r/1000);
+      }
+    }, 500);
+    return;
+  }
   root.innerHTML = `
   <div class="center-screen">
     <div class="setup-box" style="text-align:center">
@@ -336,13 +370,23 @@ function renderLockScreen(){
     if(pinBuffer.length>=4){
       const hash = await sha256(pinBuffer);
       if(hash === state.settings.pinHash){
+        sessionStorage.removeItem(LS_PIN_ATTEMPTS);
         sessionStorage.setItem(LS_UNLOCK,'1');
         pinBuffer="";
         renderApp();
       } else if(pinBuffer.length>=8){
-        document.getElementById('pinErr').textContent = "Incorrect PIN";
         pinBuffer="";
-        renderPinDots();
+        const attempts = Number(sessionStorage.getItem(LS_PIN_ATTEMPTS)||0) + 1;
+        if(attempts>=PIN_MAX_ATTEMPTS){
+          sessionStorage.setItem(LS_PIN_LOCK_UNTIL, String(Date.now()+PIN_LOCKOUT_MS));
+          sessionStorage.setItem(LS_PIN_ATTEMPTS, '0');
+          renderLockScreen();
+        } else {
+          sessionStorage.setItem(LS_PIN_ATTEMPTS, String(attempts));
+          const left = PIN_MAX_ATTEMPTS-attempts;
+          document.getElementById('pinErr').textContent = `Incorrect PIN — ${left} attempt${left===1?'':'s'} left before a 30s lockout`;
+          renderPinDots();
+        }
       }
     }
   });
@@ -371,6 +415,7 @@ function renderApp(){
   const tabs = [
     ["dashboard","Dashboard"],
     ["trucks","Trucks"],
+    ["allloads","All Loads"],
     ["expenses","Expenses"],
     ["draws","Shareholder Draws"],
     ["settings","Settings"],
@@ -398,6 +443,7 @@ function renderApp(){
   const main = document.getElementById('mainArea');
   if(state.tab==='dashboard') main.innerHTML = renderDashboard();
   else if(state.tab==='trucks') main.innerHTML = state.currentTruck ? renderTruckDetail(state.currentTruck) : renderTrucksList();
+  else if(state.tab==='allloads') main.innerHTML = renderAllLoads();
   else if(state.tab==='expenses') main.innerHTML = renderExpenses();
   else if(state.tab==='draws') main.innerHTML = renderDraws();
   else if(state.tab==='settings') main.innerHTML = renderSettings();
@@ -512,6 +558,34 @@ function availableYears(){
 /* =========================================================================
    DASHBOARD
    ========================================================================= */
+function renderTrendChart(perMonth, year, activeMonth){
+  const values = MONTHS.map(mo=>perMonth[mo].netIncome);
+  const maxAbs = Math.max(1, ...values.map(v=>Math.abs(v)));
+  const W = 700, H = 200, padTop = 10, padBottom = 26, padSide = 10;
+  const chartH = H - padTop - padBottom;
+  const zeroY = padTop + chartH/2;
+  const colW = (W - padSide*2) / MONTHS.length;
+  const barW = colW * 0.6;
+  const bars = MONTHS.map((mo,i)=>{
+    const v = values[i];
+    const h = (Math.abs(v)/maxAbs) * (chartH/2 - 4);
+    const x = padSide + i*colW + (colW-barW)/2;
+    const y = v>=0 ? zeroY - h : zeroY;
+    const isActive = mo===activeMonth;
+    const color = v>=0 ? 'var(--accent2)' : 'var(--danger)';
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h,0).toFixed(1)}" rx="2" style="fill:${color};opacity:${isActive?1:0.55}"><title>${mo} ${year}: ${money(v)}</title></rect>
+      <text x="${(x+barW/2).toFixed(1)}" y="${H-8}" text-anchor="middle" style="fill:var(--muted);font-size:9px">${mo.slice(0,1)}</text>`;
+  }).join('');
+  return `
+  <div class="card">
+    <h2 class="section">Net income trend <small>${year}</small></h2>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+      <line x1="${padSide}" y1="${zeroY.toFixed(1)}" x2="${W-padSide}" y2="${zeroY.toFixed(1)}" style="stroke:var(--border);stroke-width:1"/>
+      ${bars}
+    </svg>
+  </div>`;
+}
+
 function renderDashboard(){
   const years = availableYears();
   if(!state.dashYear || !years.includes(state.dashYear)) state.dashYear = years[years.length-1];
@@ -536,7 +610,14 @@ function renderDashboard(){
   const distMonthRows = shareholders.map(s=>`<tr><td>${escapeHtml(s.name)}</td><td class="right muted">${pct(s.pct)}</td><td class="right">${money(m.netIncome*s.pct)}</td></tr>`).join('') || `<tr><td colspan="3" class="muted center">Add shareholders in Settings.</td></tr>`;
   const distYearRows = shareholders.map(s=>`<tr><td>${escapeHtml(s.name)}</td><td class="right muted">${pct(s.pct)}</td><td class="right">${money(agg.netIncome*s.pct)}</td></tr>`).join('');
 
+  const blankMonthLoads = state.loads.filter(l=>!l.month);
+  const blankMonthBanner = blankMonthLoads.length ? `
+  <div class="card" style="border-color:var(--warn)">
+    <p style="color:var(--warn);font-size:13.5px;margin:0">⚠ ${blankMonthLoads.length} load${blankMonthLoads.length===1?'':'s'} ${blankMonthLoads.length===1?'has':'have'} no month set and ${blankMonthLoads.length===1?'is':'are'} excluded from every total below (though ${blankMonthLoads.length===1?'it still counts':'they still count'} toward the truck's own load total). Open the affected truck's Loads list and edit each one to set a month.</p>
+  </div>` : '';
+
   return `
+  ${blankMonthBanner}
   <div class="card">
     <div class="field-row">
       <div><label>Year</label><select id="dashYearSel">${years.map(y=>`<option value="${y}" ${y===year?'selected':''}>${y}</option>`).join('')}</select></div>
@@ -555,6 +636,8 @@ function renderDashboard(){
     <div class="stat"><div class="label">Total Expenses</div><div class="value">-${money(m.totalExpenses)}</div></div>
     <div class="stat"><div class="label">Net Income</div><div class="value ${m.netIncome<0?'neg':'pos'}">${money(m.netIncome)}</div></div>
   </div>
+
+  ${renderTrendChart(perMonth, year, month)}
 
   <div class="grid cols-2">
     <div class="card">
@@ -678,28 +761,38 @@ function renderTruckDetail(truckId){
 
 function openLoadModal(truckId, loadId){
   const editing = loadId ? state.loads.find(l=>l.id===loadId) : null;
-  const truck = truckById(truckId);
+  const truck = truckId ? truckById(truckId) : null;
   const truckName = truck ? truck.name : '(unknown truck)';
   const statusOpts = state.settings.statusOptions||["Delivered","Cancelled (TONU)"];
+  const trucks = state.settings.trucks||[];
+  const truckSelectHtml = truckId
+    ? ''
+    : `<div><label>Truck</label><select name="truck" required>${trucks.map(t=>`<option value="${escapeHtml(t.id)}" ${editing&&editing.truck===t.id?'selected':''}>${escapeHtml(t.name)}</option>`).join('')}</select></div>`;
+  const pickupOptions = [...new Set(state.loads.map(l=>l.pickup).filter(Boolean))].sort();
+  const destOptions = [...new Set(state.loads.map(l=>l.destination).filter(Boolean))].sort();
   showModal(`
-    <h3>${editing?'Edit load':'Add load'} — ${escapeHtml(truckName)}</h3>
+    <h3>${editing?'Edit load':'Add load'}${truckId?' — '+escapeHtml(truckName):''}</h3>
     <form id="loadForm">
+      ${truckSelectHtml}
       <div class="field-row">
-        <div><label>Load #</label><input type="number" name="number" value="${editing?editing.number:(Math.max(0,...state.loads.filter(l=>l.truck===truckId).map(l=>l.number||0))+1)}"></div>
-        <div><label>Date</label><input type="date" name="date" value="${editing?dateInputVal(editing.date):''}"></div>
+        <div><label>Load #</label><input type="number" name="number" value="${editing?editing.number:(truckId?(Math.max(0,...state.loads.filter(l=>l.truck===truckId).map(l=>l.number||0))+1):1)}"></div>
+        <div><label>Date</label><input type="date" name="date" required value="${editing?dateInputVal(editing.date):''}"></div>
       </div>
       <div class="field-row">
-        <div><label>Pickup</label><input type="text" name="pickup" value="${editing?escapeHtml(editing.pickup):''}" placeholder="e.g. TX"></div>
-        <div><label>Destination</label><input type="text" name="destination" value="${editing?escapeHtml(editing.destination):''}" placeholder="e.g. CA"></div>
+        <div><label>Pickup</label><input type="text" name="pickup" list="pickupOptionsDL" value="${editing?escapeHtml(editing.pickup):''}" placeholder="e.g. TX"></div>
+        <div><label>Destination</label><input type="text" name="destination" list="destOptionsDL" value="${editing?escapeHtml(editing.destination):''}" placeholder="e.g. CA"></div>
       </div>
+      <datalist id="pickupOptionsDL">${pickupOptions.map(p=>`<option value="${escapeHtml(p)}">`).join('')}</datalist>
+      <datalist id="destOptionsDL">${destOptions.map(p=>`<option value="${escapeHtml(p)}">`).join('')}</datalist>
       <div class="field-row">
-        <div><label>Rate ($)</label><input type="number" step="0.01" name="rate" value="${editing?editing.rate:''}"></div>
+        <div><label>Rate ($)</label><input type="number" step="0.01" min="0.01" name="rate" required value="${editing?editing.rate:''}"></div>
         <div><label>Status</label><select name="status">${statusOpts.map(s=>`<option ${editing&&editing.status===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div>
       </div>
       <div class="field-row">
-        <div><label>Month</label><select name="month">${MONTHS.map(mo=>`<option ${editing?editing.month===mo:mo===currentMonthName()}${editing&&editing.month===mo?' selected':''}>${mo}</option>`).join('')}</select></div>
+        <div><label>Month</label><select name="month" required>${MONTHS.map(mo=>`<option ${editing?editing.month===mo:mo===currentMonthName()}${editing&&editing.month===mo?' selected':''}>${mo}</option>`).join('')}</select></div>
         <div><label>Notes</label><input type="text" name="notes" value="${editing?escapeHtml(editing.notes||''):''}"></div>
       </div>
+      <p id="loadFormErr" style="color:var(--danger);font-size:13px;min-height:16px"></p>
       <div class="modal-actions">
         <button type="button" class="btn secondary" id="cancelModal">Cancel</button>
         <button type="submit" class="btn">Save</button>
@@ -709,18 +802,26 @@ function openLoadModal(truckId, loadId){
   document.getElementById('loadForm').onsubmit = async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
+    const errEl = document.getElementById('loadFormErr');
+    const targetTruckId = truckId || fd.get('truck');
     const dateVal = fd.get('date');
-    const parsedDate = dateVal ? new Date(dateVal+'T00:00:00') : null;
+    const rateVal = Number(fd.get('rate'))||0;
+    const monthVal = fd.get('month');
+    if(!targetTruckId){ errEl.textContent = 'Please choose a truck.'; return; }
+    if(!dateVal){ errEl.textContent = 'Date is required.'; return; }
+    if(!(rateVal>0)){ errEl.textContent = 'Rate must be greater than $0.'; return; }
+    if(!monthVal){ errEl.textContent = 'Month is required.'; return; }
+    const parsedDate = new Date(dateVal+'T00:00:00');
     const payload = {
-      truck: truckId,
+      truck: targetTruckId,
       number: Number(fd.get('number'))||0,
-      date: parsedDate ? firebase.firestore.Timestamp.fromDate(parsedDate) : null,
-      year: parsedDate ? parsedDate.getFullYear() : (state.dashYear || new Date().getFullYear()),
+      date: firebase.firestore.Timestamp.fromDate(parsedDate),
+      year: parsedDate.getFullYear(),
       pickup: fd.get('pickup')||'',
       destination: fd.get('destination')||'',
-      rate: Number(fd.get('rate'))||0,
+      rate: rateVal,
       status: fd.get('status'),
-      month: fd.get('month'),
+      month: monthVal,
       notes: fd.get('notes')||'',
     };
     try{
@@ -732,6 +833,113 @@ function openLoadModal(truckId, loadId){
   document.getElementById('cancelModal').onclick = closeModal;
 }
 function currentMonthName(){ return MONTHS[new Date().getMonth()]; }
+
+/* =========================================================================
+   ALL LOADS — cross-truck search/filter view
+   ========================================================================= */
+function renderAllLoads(){
+  const trucks = state.settings.trucks||[];
+  const f = state.allLoadsFilter||{truck:'',from:'',to:'',route:''};
+  const truckOpts = trucks.map(t=>`<option value="${escapeHtml(t.id)}" ${f.truck===t.id?'selected':''}>${escapeHtml(t.name)}</option>`).join('');
+  return `
+  <div class="card">
+    <h2 class="section">All Loads <small>search &amp; filter across every truck</small></h2>
+    <div class="field-row">
+      <div><label>Truck</label><select id="alTruckSel"><option value="">All trucks</option>${truckOpts}</select></div>
+      <div><label>Route (pickup or destination)</label><input type="text" id="alRouteInput" value="${escapeHtml(f.route)}" placeholder="e.g. TX"></div>
+    </div>
+    <div class="field-row" style="margin-top:10px">
+      <div><label>From date</label><input type="date" id="alFromInput" value="${escapeHtml(f.from)}"></div>
+      <div><label>To date</label><input type="date" id="alToInput" value="${escapeHtml(f.to)}"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn secondary sm" id="alClearBtn">Clear filters</button>
+      <button class="btn" id="alAddLoadBtn">+ Add load</button>
+    </div>
+  </div>
+  <div id="allLoadsResults"></div>`;
+}
+
+function allLoadsFiltered(){
+  const f = state.allLoadsFilter||{truck:'',from:'',to:'',route:''};
+  const truckNameMap = new Map((state.settings.trucks||[]).map(t=>[t.id,t.name]));
+  let list = state.loads.slice();
+  if(f.truck) list = list.filter(l=>l.truck===f.truck);
+  if(f.route){
+    const needle = f.route.toLowerCase();
+    list = list.filter(l=>(l.pickup||'').toLowerCase().includes(needle) || (l.destination||'').toLowerCase().includes(needle));
+  }
+  if(f.from){
+    const fromD = new Date(f.from+'T00:00:00');
+    list = list.filter(l=>{ const d=toJsDate(l.date); return d ? d>=fromD : false; });
+  }
+  if(f.to){
+    const toD = new Date(f.to+'T23:59:59');
+    list = list.filter(l=>{ const d=toJsDate(l.date); return d ? d<=toD : false; });
+  }
+  list.sort((a,b)=>{
+    const da=toJsDate(a.date), db_=toJsDate(b.date);
+    if(da && db_) return db_-da;
+    return (b.number||0)-(a.number||0);
+  });
+  return list.map(l=>Object.assign({}, l, {truckName: truckNameMap.get(l.truck) || '(unknown truck)'}));
+}
+
+function updateAllLoadsResults(){
+  const container = document.getElementById('allLoadsResults');
+  if(!container) return;
+  const loads = allLoadsFiltered();
+  const totalGross = loads.reduce((s,l)=>s+(Number(l.rate)||0),0);
+  const rows = loads.map(l=>`
+    <tr>
+      <td>${l.number!=null?l.number:''}</td>
+      <td>${fmtDate(l.date)}</td>
+      <td>${escapeHtml(l.truckName)}</td>
+      <td>${escapeHtml(l.pickup)}</td>
+      <td>${escapeHtml(l.destination)}</td>
+      <td class="right">${money(l.rate)}</td>
+      <td>${l.status==='Delivered'?'<span class="badge ok">Delivered</span>':`<span class="badge bad">${escapeHtml(l.status||'')}</span>`}</td>
+      <td>${escapeHtml(l.month)}</td>
+      <td class="row-actions">
+        <button class="icon-btn" data-al-edit="${l.id}" data-al-truck="${escapeHtml(l.truck)}">✎</button>
+        <button class="icon-btn" data-al-del="${l.id}">🗑</button>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="9" class="muted center">No loads match these filters.</td></tr>`;
+
+  const cards = loads.map(l=>`
+    <div class="load-card">
+      <div class="load-card-top">
+        <span class="load-card-num">#${l.number!=null?l.number:''}</span>
+        <span class="load-card-date">${fmtDate(l.date)}</span>
+        ${l.status==='Delivered'?'<span class="badge ok">Delivered</span>':`<span class="badge bad">${escapeHtml(l.status||'')}</span>`}
+      </div>
+      <div class="muted" style="margin-bottom:4px">${escapeHtml(l.truckName)}</div>
+      <div class="load-card-route">${escapeHtml(l.pickup)} → ${escapeHtml(l.destination)}</div>
+      <div class="load-card-bottom">
+        <span class="load-card-rate">${money(l.rate)}</span>
+        <span class="muted">${escapeHtml(l.month)}</span>
+        <span class="row-actions">
+          <button class="icon-btn" data-al-edit="${l.id}" data-al-truck="${escapeHtml(l.truck)}">✎</button>
+          <button class="icon-btn" data-al-del="${l.id}">🗑</button>
+        </span>
+      </div>
+    </div>`).join('') || `<p class="muted center">No loads match these filters.</p>`;
+
+  container.innerHTML = `
+  <div class="card">
+    <h2 class="section">${loads.length} load${loads.length===1?'':'s'} <small>${money(totalGross)} total</small></h2>
+    <div class="tbl-wrap desktop-table" style="margin-top:14px">
+      <table>
+        <thead><tr><th>#</th><th>Date</th><th>Truck</th><th>Pickup</th><th>Destination</th><th class="right">Rate</th><th>Status</th><th>Month</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="mobile-cards" style="margin-top:14px">${cards}</div>
+  </div>`;
+
+  container.querySelectorAll('[data-al-edit]').forEach(b=>b.onclick=()=>openLoadModal(b.getAttribute('data-al-truck'), b.getAttribute('data-al-edit')));
+  container.querySelectorAll('[data-al-del]').forEach(b=>b.onclick=()=>confirmDelete('loads', b.getAttribute('data-al-del'), 'load'));
+}
 
 /* =========================================================================
    EXPENSES
@@ -936,6 +1144,7 @@ function renderSettings(){
     <div class="tbl-wrap"><table class="compact"><thead><tr><th>Name</th><th>Share %</th><th></th></tr></thead><tbody>${shRows}</tbody></table></div>
     <button class="btn secondary sm" id="addShBtn" style="margin-top:10px">+ Add shareholder</button>
     <button class="btn sm" id="saveShBtn" style="margin-top:10px;margin-left:6px">Save shareholders</button>
+    <p id="shSaveErr" class="muted" style="color:var(--danger);font-size:12.5px;min-height:16px;margin-top:8px"></p>
   </div>
 
   <div class="card">
@@ -963,6 +1172,7 @@ function renderSettings(){
     <h2 class="section">Backup</h2>
     <button class="btn secondary sm" id="exportJsonBtn">Export backup (.json)</button>
     <button class="btn secondary sm" id="exportXlsxBtn" style="margin-left:6px">Export to Excel (.xlsx)</button>
+    <p class="muted" style="font-size:12.5px;margin-top:10px">${s.lastExportedAt ? 'Last exported: '+new Date(s.lastExportedAt).toLocaleString('en-US',{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Never exported yet — consider taking a backup periodically.'}</p>
   </div>
 
   <div class="card">
@@ -1004,6 +1214,23 @@ function attachTabHandlers(){
   if(addLoadBtn) addLoadBtn.onclick = ()=>openLoadModal(state.currentTruck, null);
   root.querySelectorAll('[data-edit-load]').forEach(b=>b.onclick=()=>openLoadModal(state.currentTruck, b.getAttribute('data-edit-load')));
   root.querySelectorAll('[data-del-load]').forEach(b=>b.onclick=()=>confirmDelete('loads', b.getAttribute('data-del-load'), 'load'));
+
+  // All Loads
+  const alTruckSel = document.getElementById('alTruckSel');
+  if(alTruckSel){
+    updateAllLoadsResults();
+    alTruckSel.onchange = ()=>{ state.allLoadsFilter.truck = alTruckSel.value; updateAllLoadsResults(); };
+    const alRouteInput = document.getElementById('alRouteInput');
+    if(alRouteInput) alRouteInput.oninput = ()=>{ state.allLoadsFilter.route = alRouteInput.value; updateAllLoadsResults(); };
+    const alFromInput = document.getElementById('alFromInput');
+    if(alFromInput) alFromInput.onchange = ()=>{ state.allLoadsFilter.from = alFromInput.value; updateAllLoadsResults(); };
+    const alToInput = document.getElementById('alToInput');
+    if(alToInput) alToInput.onchange = ()=>{ state.allLoadsFilter.to = alToInput.value; updateAllLoadsResults(); };
+    const alClearBtn = document.getElementById('alClearBtn');
+    if(alClearBtn) alClearBtn.onclick = ()=>{ state.allLoadsFilter = {truck:'',from:'',to:'',route:''}; renderApp(); };
+    const alAddLoadBtn = document.getElementById('alAddLoadBtn');
+    if(alAddLoadBtn) alAddLoadBtn.onclick = ()=>openLoadModal(null, null);
+  }
 
   // Expenses
   const addExpBtn = document.getElementById('addExpBtn');
@@ -1056,19 +1283,39 @@ function attachSettingsHandlers(){
   };
   const saveShBtn = document.getElementById('saveShBtn');
   if(saveShBtn) saveShBtn.onclick = async ()=>{
+    const errEl = document.getElementById('shSaveErr');
     const names = root.querySelectorAll('[data-sh-name]');
     const list = Array.from(names).map(inp=>{
       const i = inp.getAttribute('data-sh-name');
       const pctInp = root.querySelector(`[data-sh-pct="${i}"]`);
       return { name: inp.value.trim(), pct: Number(pctInp.value)||0 };
     }).filter(x=>x.name);
+    const total = list.reduce((s,x)=>s+Number(x.pct||0),0);
+    if(list.length && Math.abs(total-1)>0.001){
+      if(errEl) errEl.textContent = `Shares must add up to 100% before saving — currently ${pct(total)}. Adjust the percentages and try again.`;
+      return;
+    }
+    if(errEl) errEl.textContent = '';
     await saveSettings({shareholders:list});
     toast("Shareholders saved",'ok');
   };
   root.querySelectorAll('[data-del-sh]').forEach(b=>b.onclick=()=>{
     const i = Number(b.getAttribute('data-del-sh'));
-    state.settings.shareholders.splice(i,1);
-    renderApp();
+    const sh = state.settings.shareholders[i];
+    showModal(`
+      <h3>Delete shareholder${sh?': '+escapeHtml(sh.name):''}?</h3>
+      <p class="muted">This can't be undone once you save. Draws already logged for this shareholder stay in the Draw log, but they'll no longer show up in the balance summary.</p>
+      <div class="modal-actions">
+        <button class="btn secondary" id="cancelModal">Cancel</button>
+        <button class="btn danger" id="confirmDelBtn">Delete</button>
+      </div>
+    `);
+    document.getElementById('cancelModal').onclick = closeModal;
+    document.getElementById('confirmDelBtn').onclick = ()=>{
+      state.settings.shareholders.splice(i,1);
+      closeModal();
+      renderApp();
+    };
   });
 
   const addTruckBtn = document.getElementById('addTruckBtn');
@@ -1079,20 +1326,42 @@ function attachSettingsHandlers(){
   };
   const saveTrucksBtn = document.getElementById('saveTrucksBtn');
   if(saveTrucksBtn) saveTrucksBtn.onclick = async ()=>{
+    let anyClamped = false;
     const names = root.querySelectorAll('[data-truck-name]');
     const list = Array.from(names).map(inp=>{
       const i = inp.getAttribute('data-truck-name');
       const pctInp = root.querySelector(`[data-truck-pct="${i}"]`);
       const id = inp.getAttribute('data-truck-id') || inp.value.trim();
-      return { id, name: inp.value.trim(), pct: Number(pctInp.value)||0 };
+      const raw = Number(pctInp.value)||0;
+      const clamped = Math.min(1, Math.max(0, raw));
+      if(clamped!==raw) anyClamped = true;
+      return { id, name: inp.value.trim(), pct: clamped };
     }).filter(x=>x.name);
     await saveSettings({trucks:list});
-    toast("Trucks saved",'ok');
+    toast(anyClamped ? "Trucks saved (a Co.% value outside 0–100% was clamped)" : "Trucks saved",'ok');
   };
   root.querySelectorAll('[data-del-truck]').forEach(b=>b.onclick=()=>{
     const i = Number(b.getAttribute('data-del-truck'));
-    state.settings.trucks.splice(i,1);
-    renderApp();
+    const t = state.settings.trucks[i];
+    const linkedLoads = t ? state.loads.filter(l=>l.truck===t.id) : [];
+    const loadsWarning = linkedLoads.length
+      ? `<p style="color:var(--warn);font-size:13px">⚠ ${linkedLoads.length} load${linkedLoads.length===1?'':'s'} (${money(linkedLoads.reduce((s,l)=>s+(Number(l.rate)||0),0))} total) are logged against this truck. They'll stay in the database but become hidden from the Trucks tab and excluded from company-% calculations once this truck is removed.</p>`
+      : '';
+    showModal(`
+      <h3>Delete truck${t?': '+escapeHtml(t.name):''}?</h3>
+      <p class="muted">This can't be undone once you save.</p>
+      ${loadsWarning}
+      <div class="modal-actions">
+        <button class="btn secondary" id="cancelModal">Cancel</button>
+        <button class="btn danger" id="confirmDelBtn">Delete</button>
+      </div>
+    `);
+    document.getElementById('cancelModal').onclick = closeModal;
+    document.getElementById('confirmDelBtn').onclick = ()=>{
+      state.settings.trucks.splice(i,1);
+      closeModal();
+      renderApp();
+    };
   });
 
   const setPinBtn = document.getElementById('setPinBtn');
@@ -1317,6 +1586,7 @@ function exportJsonBackup(){
   const payload = { settings: state.settings, loads: state.loads, expenses: state.expenses, draws: state.draws, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
   downloadBlob(blob, 'starlink-freight-backup-'+new Date().toISOString().slice(0,10)+'.json');
+  recordExportTimestamp();
 }
 
 function exportXlsxBackup(){
@@ -1369,6 +1639,12 @@ function exportXlsxBackup(){
   XLSX.utils.book_append_sheet(wbOut, XLSX.utils.aoa_to_sheet(dashAoa), 'Dashboard '+year);
 
   XLSX.writeFile(wbOut, 'starlink-freight-export-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  recordExportTimestamp();
+}
+
+function recordExportTimestamp(){
+  const iso = new Date().toISOString();
+  saveSettings({lastExportedAt: iso}).catch(()=>{}); // best-effort; not worth surfacing an error for a timestamp
 }
 
 function downloadBlob(blob, filename){
